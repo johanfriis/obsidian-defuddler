@@ -1,0 +1,22 @@
+{
+  "name": "jsbridge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "JS layer for the Android clipper: builds clipper-bundle.js from the vendored obsidian-clipper (git submodule) plus our webextension-polyfill shim; vitest + linkedom test harness.",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "esbuild": "^0.28.2",
+    "linkedom": "^0.18.13",
+    "sass": "^1.103.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "dayjs": "^1.11.23",
+    "defuddle": "0.19.3"
+  }
+}

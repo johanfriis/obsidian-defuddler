@@ -1,0 +1,16 @@
+<!-- Placeholder "reader lines" glyph. No Obsidian marks (playbook §17); final icon at G2. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#ECEFF1"
+        android:pathData="M32,38h44v6h-44z" />
+    <path
+        android:fillColor="#ECEFF1"
+        android:pathData="M32,51h44v6h-44z" />
+    <path
+        android:fillColor="#ECEFF1"
+        android:pathData="M32,64h30v6h-30z" />
+</vector>

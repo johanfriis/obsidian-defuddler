@@ -1,0 +1,4 @@
+<resources>
+    <!-- Dev-only label; the shipped name is a G2 decision (playbook §10/§17). -->
+    <string name="app_name">Clipper (dev)</string>
+</resources>

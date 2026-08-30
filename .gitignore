@@ -12,6 +12,7 @@ android/*/build/
 android/local.properties
 android/.idea/
 android/*.iml
+android/.kotlin/
 *.apk
 *.aab
 

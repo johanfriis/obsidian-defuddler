@@ -157,6 +157,21 @@ LICENSE, THIRD_PARTY_LICENSES, .gitignore, .gitattributes
 
 ## 5. Phase 0 — Environment & repo bootstrap
 
+**Status (2026-08-30, repo-side done by Claude session):** P0.1 done (`.gitattributes` as below plus
+`*.jar`/`*.webp` binary entries; `LICENSE` MIT added). P0.5 done — submodule added and pinned at
+`9aa509b`; `jsbridge/` has deps installed (defuddle pinned exactly at 0.19.3; vitest 4 / esbuild 0.28 /
+sass 1.103 / linkedom 0.18 / typescript 7) and a 3-test bootstrap suite passing via `npm test`
+(scoped by `vitest.config.ts` so upstream's vendored tests don't run by accident — M1.7 wires those in
+deliberately). §3's upstream receipts re-verified against the pinned checkout. P0.6 done — scaffold at
+`android/` (package `it.slowmail.clipper`, wrapper committed, Gradle 8.14.3 / AGP 8.13.0 /
+Kotlin 2.2.21 / Compose BOM 2025.06.01), with the M0 Spike A harness (§6) already wired as the main
+screen so the first install can exercise A2/A3/A4 immediately. **Caveat:** the cloud session could not
+run an Android build (`dl.google.com` blocked there — Kotlin sources syntax-checked with a standalone
+compiler instead), so the first `gradlew assembleDebug` on a real machine is the actual build
+verification; if a pinned androidx/AGP version fails to resolve, nudge it in
+`android/gradle/libs.versions.toml`. Remaining (machine-side): P0.2 Android Studio, P0.3 phone setup,
+P0.4 Node, then the acceptance list.
+
 ### Tasks
 
 - **P0.1 — Git.** `git init`; `.gitignore` for Android Studio + Gradle + Node
