@@ -5,7 +5,7 @@
 # system. Android Studio uses its own bundled JBR — see docs/plan playbook §5.
 
 [tools]
-java = "temurin-21"
+java = "temurin-25"
 node = "22.22.2"
 
 [env]

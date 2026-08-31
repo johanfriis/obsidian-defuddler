@@ -56,6 +56,7 @@ everything else was decided by Johan explicitly.
 | D14 | Extraction regression harness starts in M1 *(default)* | Every submodule bump is guarded from the beginning. |
 | D15 | Project license MIT; `THIRD_PARTY_LICENSES` shipped in APK; no Obsidian trademarks in shipped branding | See §17. |
 | D16 | Templates are authored/edited in the desktop clipper and imported here as JSON *(default)* | v1 imports and selects templates; it does not include a template editor. |
+| D17 | Track the current stable toolchain (AGP/Gradle/JDK) rather than pinning to an older one or shimming | Standard tools at their sanctioned versions beat local workarounds; migrations are cheapest taken early. Toolchain versions live in `android/gradle/libs.versions.toml`, `android/gradle/wrapper`, `android/gradle/gradle-daemon-jvm.properties` and `mise.toml`. |
 
 ## 2. Gate outcomes
 
@@ -163,8 +164,9 @@ LICENSE, THIRD_PARTY_LICENSES, .gitignore, .gitattributes
 sass 1.103 / linkedom 0.18 / typescript 7) and a 3-test bootstrap suite passing via `npm test`
 (scoped by `vitest.config.ts` so upstream's vendored tests don't run by accident — M1.7 wires those in
 deliberately). §3's upstream receipts re-verified against the pinned checkout. P0.6 done — scaffold at
-`android/` (package `it.slowmail.obsidianreader`, wrapper committed, Gradle 8.14.3 / AGP 8.13.0 /
-Kotlin 2.2.21 / Compose BOM 2025.06.01), with the M0 Spike A harness (§6) already wired as the main
+`android/` (package `it.slowmail.obsidianreader`, wrapper committed, Gradle 9.5.0 / AGP 9.3.2 /
+Kotlin 2.2.21 / Compose BOM 2026.02.01, daemon toolchain JDK 25, configuration cache on), with the
+M0 Spike A harness (§6) already wired as the main
 screen so the first install can exercise A2/A3/A4 immediately. **Caveat:** the cloud session could not
 run an Android build (`dl.google.com` blocked there — Kotlin sources syntax-checked with a standalone
 compiler instead), so the first `gradlew assembleDebug` on a real machine is the actual build
