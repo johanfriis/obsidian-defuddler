@@ -25,6 +25,10 @@ mimicing the features of the official Obsidian Web Clipper on desktop.
 
 **Scope guard: bulk import is explicitly *not* a requirement.** Curated, single-item capture is fine.
 
+**Scope guard: this is not a browser.** No URL bar, back/forward, tabs, history or downloads — the app
+receives a shared link and reads it. A page that cannot be reached without signing in is a workaround
+Johan performs elsewhere, or a clip that does not happen. *(Build Playbook **D23**.)*
+
 ## Root cause diagnosed
 
 Every browser-extension-based approach on Android depends on the browser correctly relaying Obsidian's

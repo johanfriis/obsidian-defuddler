@@ -71,6 +71,7 @@ everything else was decided by Johan explicitly.
 | D18 | `SafWriter` (M2.4) and SAF hardening (M6.3) deferred, not deleted | Follows from D2: with no SAF save path there is nothing to write or harden. **The original justification (SAF bypasses Obsidian's triggers) turned out not to separate the two options — A5 showed `obsidian://` bypasses them too.** What the deferral now rests on is cost: `SafWriter` reimplements append/overwrite that Obsidian gives us free, plus tree-URI permission plumbing to build and harden. Two accepted trades: (1) `obsidian://` always foregrounds Obsidian (A4) — SAF would have allowed a true background save; (2) the URI contract is now a single point of failure — acceptable because notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss. |
 | D19 | Bundle English UI strings only (`LOCALES = ['en']`) and highlight.js's ~40-language `lib/common` rather than the full ~190 | Johan's call, 2026-08-31, confirming the B1 trims. Both degrade gracefully — `getMessage` falls back to English, `highlightElement` leaves an unregistered language unstyled — and both are one-line reverts in `jsbridge/build.mjs`. |
 | D20 | Reader CSS is delivered as an inline `<style>` by default, not upstream's blob-URL `<link>` — for `reader.css` and `highlighter.css` alike | Johan's call, 2026-08-31 at G0. Measured: the blob path is refused by any page with a `style-src` that omits `blob:` (github.com), leaving the reader stripped and unstyled. Inlining costs nothing on pages without CSP, and detecting a refusal in order to fall back is harder than always inlining. Implemented without patching upstream — see `installStyle` in `jsbridge/src/bundle-entry.ts`. |
+| D23 | **No generic browser UI, ever.** No URL bar, no back/forward, no tabs, history or downloads. If a page cannot be read without signing in, that is a workaround Johan performs outside the app — or the clip does not happen | Johan's call, 2026-08-31, when the question of pulling M6.1's browsing strip into M1 was raised. He clips from logged-in sites rarely, and a browser surface is far larger than it looks (tabs, downloads, uploads, fullscreen video, permission prompts, PDFs). This bounds M6.1 and overrides the "normal browser chrome" mitigation the Architecture doc used to propose. |
 | D21 | Install a pass-through Trusted Types `default` policy before the reader runs | Johan's call, 2026-08-31 at G0. Without it, pages sending `require-trusted-types-for 'script'` (YouTube) kill the reader outright — Defuddle's `innerHTML` and `Reader.apply`'s `DOMParser` both throw and nothing renders. A browser extension never meets this because its content script runs in an isolated world Trusted Types does not police; our main-world injection is policed. **The accepted trade:** the policy switches off the page's own XSS guard for the life of that document. Johan's reasoning — the reader/clip session is ephemeral, the page is one he chose, and we already inject a bundle that rewrites the whole DOM. Only creatable where the page sends no `trusted-types` directive naming allowed policies; where it is refused we log and the page fails visibly. See `installTrustedTypesPolicy` in `jsbridge/src/bundle-entry.ts`. |
 | D22 | B4's extraction-quality pass is folded into M1.7's fixture harness rather than run as a throwaway spike *(default)* | B3 already exercised extraction on four real pages including the two hard ones (CSP-strict, Trusted Types), so B4's remaining value is markdown/metadata quality on saved fixtures — which is exactly M1.7's job. Same work, but the output is kept and guards every future submodule bump (D14). M0 therefore ends at G0. Two B3 findings carry into M1.7 as fixture cases: unflattened shadow DOM on github, and the YouTube settle-time question. |
 | D17 | Track the current stable toolchain (AGP/Gradle/JDK) rather than pinning to an older one or shimming | Standard tools at their sanctioned versions beat local workarounds; migrations are cheapest taken early. Toolchain versions live in `android/gradle/libs.versions.toml`, `android/gradle/wrapper`, `android/gradle/gradle-daemon-jvm.properties` and `mise.toml`. |
@@ -215,7 +216,7 @@ ellipsizes.
 - **Still blocked on github:** `flatten-shadow-dom.js` is refused by `script-src` and there is no
   equivalent trick — it must be a `<script>` the page executes. Upstream's `script.onerror` resolves
   the promise, so it degrades rather than hangs, but shadow-DOM pages will not be flattened, which may
-  cost extraction quality. Worth a look in B4/M1.7 fixtures.
+  cost extraction quality. Carried into M1.7's fixtures per D22.
 - **The YouTube transcript works — but extraction timing decides whether it is there.** Measured by
   varying the settle between page load and toggle, everything else identical:
 
@@ -318,8 +319,17 @@ one alias — `webextension-polyfill → jsbridge/shim/browser.ts` — implement
 `storage` (backed by SharedPreferences via the JS bridge), `i18n.getMessage` (backed by bundled
 `src/_locales/en/messages.json`), and `runtime` messaging (an event bus to/from Kotlin:
 `sendMessage` → `AndroidBridge.postMessage(json)`; Kotlin dispatches inbound events via
-`evaluateJavascript`). Only if some module bypasses the polyfill do we add direct aliases for
-`storage-utils`/`i18n` — treat that as plan B, discovered during M0/M1.
+`evaluateJavascript`). **Plan B (direct `storage-utils`/`i18n` aliases) proved unnecessary** — B1
+verified nothing in the vendored tree bypasses `browser-polyfill.ts`, so the one alias covers
+everything (§2).
+
+Two further duties fall on this layer, both discovered at G0 and both non-obvious because a browser
+extension never needs them (§2, and Architecture & Rationale's *What we are not*):
+
+- `runtime.getURL` is backed by a build-time asset map, and **CSS is delivered inline** rather than
+  through the blob URLs upstream uses, because page CSP refuses them (D20).
+- A **pass-through Trusted Types default policy** is installed before the reader runs, or pages
+  enforcing Trusted Types kill extraction outright (D21).
 
 ```text
 android/                              Gradle project (Kotlin, Compose, minSdk 31, targetSdk 36)
@@ -362,7 +372,7 @@ verified on the Mac. The scaffold's first real `assembleDebug` passed (the 2026-
 cloud session being unable to build is retired — no version nudging was needed). Toolchain was then
 migrated to current stable per D17: AGP 9.3.2, Gradle 9.5.0, JDK 25, Compose BOM 2026.02.01,
 configuration cache on, daemon toolchain committed at `android/gradle/gradle-daemon-jvm.properties`.
-M0 Spike A is complete (§2); **Spike B is where a fresh session resumes.**
+**M0 is complete and GATE G0 is closed (§2, §6); a fresh session resumes at M1 (§7).**
 
 **Local dev loop — `just` at the repo root.** A `justfile` and `mise.toml` were added after this
 playbook was first written; they are the primary interface and a fresh session should prefer them over
@@ -487,20 +497,25 @@ whole design stands on.
   3. Decide how Kotlin injects a ~2 MB bundle — `evaluateJavascript` with the whole source, or a
      `<script src>` served by `WebViewAssetLoader` (which has the same CSP exposure as (2)).
      Keep the Spike A harness reachable; M2's acceptance list still references it.
-- **B4.** Same page through `defuddle` full bundle: eyeball markdown + metadata quality on 2–3 real
-  pages (one news article, one YouTube page, one GitHub README). Two B3 findings feed straight in:
-  the YouTube extractor's inline-JSON parse failure, and whether unflattened shadow DOM costs
-  extraction quality on github. Cheapest run in Node against saved fixtures, where the output becomes
-  M1.7's harness instead of being thrown away.
+- **B4.** ~~Same page through `defuddle` full bundle: eyeball markdown + metadata quality on 2–3 real
+  pages.~~ **Not run as a spike — folded into M1.7 per D22.** B3 already exercised extraction on four
+  real pages including the two hard ones, so what remained was markdown/metadata quality against saved
+  fixtures, which is M1.7's job and keeps the output instead of throwing it away. Two B3 findings go
+  in as fixture cases: unflattened shadow DOM on github, and the YouTube settle-time question.
 
-### GATE G0 — decide with Johan
+### GATE G0 — CLOSED, PASSED (2026-08-31)
+
+**Outcome: A1/A2 passed and B3 renders a usable reader, so both green branches were taken** —
+clipboard-first stays the primary save path (D2 confirmed), and Layer B proceeds as designed → M1.
+Two trade-offs surfaced along the way and were signed off by Johan: **D20** (inline CSS) and **D21**
+(Trusted Types). Full findings in §2. The table below is kept as the decision record.
 
 | Finding | Consequence |
 |---|---|
-| A1/A2 pass | Clipboard-first stays the primary save path (D2 confirmed). |
-| Clipboard path fails | Primary becomes `content=`; revisit D2. |
-| B3 renders usable reader | Layer B proceeds as designed → M1. |
-| B3 unusable/broken | Stop. Options, best first: (1) **upstream's own standalone reader page** — see below; (2) deeper shimming; (3) a native-lite reader (defuddle output in our own template). Decide before any M1 work. |
+| A1/A2 pass | **Taken.** Clipboard-first stays the primary save path (D2 confirmed). |
+| Clipboard path fails | Not taken. |
+| B3 renders usable reader | **Taken.** Layer B proceeds as designed → M1. |
+| B3 unusable/broken | Not taken. Options had been, best first: (1) upstream's own standalone reader page — see below; (2) deeper shimming; (3) a native-lite reader. **Option (1) remains the documented fallback if page CSP ever defeats the live-page path on a site that matters.** |
 
 **Upstream ships two reader paths, not one** (found 2026-08-31 while comparing our WebView against the
 extension's privileges). Besides toggling on the live page — what B3 tests — `src/reader.html` +
@@ -673,9 +688,11 @@ hand-written reader.
 
 ## 13. M6 — In-app login & polish (post-v1)
 
-- **M6.1** "Open original page" action: exits reader into normal browsing (visible URL bar strip,
-  back/forward), user logs in, "back to reader" re-extracts. Cookies already persist (M1.2), so this is
-  once per site.
+- **M6.1** *Cut to almost nothing by D23.* No URL bar, no back/forward, no browsing surface. What may
+  still be worth having is a "show the page as-is" toggle that stops applying reader mode to the
+  already-loaded page — enough to log in via a form on that page, since cookies persist (M1.2) and
+  this is once per site. If even that drifts toward browser chrome, drop it: per D23 a login-walled
+  page is Johan's workaround to perform elsewhere, not a feature to build.
 - **M6.2** Error-state pass: offline, timeouts, HTTP errors, extraction failures — every path ends in
   either a usable reader, a bookmark offer, or a clear retry.
 - **M6.3** *Deferred (D18).* SAF hardening — detect revoked/moved tree permission and re-prompt instead
@@ -730,7 +747,7 @@ check ColorOS's "recommended sharing" settings first.
 | Android/ColorOS blocks the clipboard handoff to Obsidian | Fallback to `content=` (A1/A2 passed at G0, so not currently a live risk) | G0 |
 | Vendored reader breaks or fights the WebView | Timeboxed spike before any investment; native-lite fallback named at G0 | G0/G1 |
 | Upstream drift breaks extraction or highlighter on bump | Pinned submodule; fixture snapshots + upstream tests in our harness; §14 procedure | M1.7 onward |
-| Sites block the WebView UA or bot-detect | Chrome-mobile UA (M1.2), cookie persistence, login flow (M6.1), bookmark fallback (M2.5) | M2/M6 |
+| Sites block the WebView UA or bot-detect | Chrome-mobile UA (M1.2), cookie persistence, bookmark fallback (M2.5). **No browsing/login UI to fall back on — D23**, so a hard-blocked site is accepted as a bookmark clip | M2 |
 | SPA/JS-heavy pages extract poorly | Settle delay + re-extract action (M1.6), bookmark fallback | M1/M2 |
 | Intent URI size limits truncate `content=` saves | A3 measured no truncation up to 512 KB; oversized fails loudly, never silently | M0 |
 | Windows dev friction (paths, EOL, drivers) | §14 parity rules, P0.1 gitattributes, P0.3 driver note | Phase 0 |
