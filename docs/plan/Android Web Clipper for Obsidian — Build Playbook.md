@@ -1,10 +1,14 @@
 # Android Web Clipper for Obsidian — Build Playbook
 
-This is the live, step-by-step guide from empty repo to finished app. It builds on the
-[Implementation Plan](<Android Web Clipper for Obsidian — Implementation Plan.md>) (architecture and
-rationale) and the [Initial Brief](<Android Web Clipper for Obsidian — Initial Brief.md>) (problem and
-decision), and it **supersedes the plan's Milestones section**. The three `Obsidian Web Clipper UI - *.jpg`
-screenshots are the UI reference throughout.
+This is the live, step-by-step guide from empty repo to finished app, and **the authoritative document**
+— milestones, acceptance criteria, decisions, the save recipe and the dev loop all live here. Two
+companions hold what this one deliberately does not:
+
+- [Architecture & Rationale](<Android Web Clipper for Obsidian — Architecture & Rationale.md>) — the
+  *why* behind the three-layer design and what upstream actually ships.
+- [Problem & UI Reference](<Android Web Clipper for Obsidian — Problem & UI Reference.md>) — the problem
+  statement, the scope guard, and the **legend for the three `Obsidian Web Clipper UI - *.jpg`
+  screenshots** referenced throughout this document (see §16).
 
 **Definition of done for v1:** Johan shares a link from any app on the Find N6 → the reader opens →
 one tap opens the clip sheet → the note lands in the vault shaped by his template, with his usual vault
@@ -30,9 +34,11 @@ Bumping either pin follows the procedure in §14 — never casually.
 - This is a living document. Sessions executing a milestone check off tasks, record gate outcomes and
   measurements (e.g. the `content=` size limit from M0), and correct anything reality disproves.
 - A fresh implementation session should read §1 (decisions), §2 (gate outcomes), §3 (upstream ground
-  truth), and the milestone it is executing. The Implementation Plan is background reading.
+  truth), and the milestone it is executing. Architecture & Rationale is background reading; Problem &
+  UI Reference is where every "screenshot N" reference resolves.
 - **Where things stand (2026-08-31):** Phase 0 complete, M0 Spike A complete and its findings recorded
-  in §2 — several of them correct earlier assumptions, including one in the Initial Brief. **Resume at
+  in §2 — several of them correct earlier assumptions, including one carried since the original brief
+  (now Problem & UI Reference). **Resume at
   M0 Spike B (§6);** GATE G0 cannot close until B3 is judged. Read §5's status block first for the
   `just`-based dev loop, which post-dates the original text of this playbook.
 - Expected effort: one milestone ≈ one to a few focused sessions. M0 is timeboxed to ~1 day.
@@ -46,7 +52,7 @@ everything else was decided by Johan explicitly.
 |---|---|---|
 | D1 | Dedicated Android app, not a browser extension | Mobile browsers relay `obsidian://` unreliably; a first-class app fires the intent itself (Brief). |
 | D2 | Save via `obsidian://new`, clipboard-first, with `content=` as the only fallback. No SAF write path. On failure, tell Johan — never save by another route | **Rationale corrected at G0/A5 (2026-08-31).** The Brief's premise — that the URI lets Obsidian run its usual import triggers — is measurably false: Templater's on-create trigger does *not* fire for notes created via `obsidian://new`. The decision stands on what survives: no tree-URI plumbing to build or harden, Obsidian implements dedup/append/overwrite for us, and the note enters Obsidian's index immediately. Failure is reported rather than rerouted, because a save that silently takes a different path is worse than a visible error. |
-| D3 | Three-layer architecture: upstream clip engine (dependency) + vendored reader/highlighter + native Kotlin/Compose shell | See Implementation Plan §Architecture. |
+| D3 | Three-layer architecture: upstream clip engine (dependency) + vendored reader/highlighter + native Kotlin/Compose shell | See [Architecture & Rationale](<Android Web Clipper for Obsidian — Architecture & Rationale.md>). |
 | D4 | Reader (M1) before clip/save (M2) | Johan's call, 2026-08-30. The reading experience is part of the daily driver, not polish. |
 | D5 | v1 = M0 + M1 + M2 + M3 (templates incl. import and URL auto-selection). Post-v1 order: highlighter → reader style settings → in-app login/polish | Johan's call, 2026-08-30. |
 | D6 | Dev environment: Android Studio + physical device; **macOS and Windows are both first-class dev machines** | Johan's call. Hard constraint: Gradle wrapper + Node scripts only, no bash-only tooling. |
@@ -518,7 +524,17 @@ rebuilt bundle together, noting the new pin in §Pinned upstream.
 
 **WebView debugging.** `setWebContentsDebuggingEnabled(true)` (debug builds) + `chrome://inspect` on
 the dev machine gives full DevTools against the phone — the primary tool for all Layer B work.
-`adb logcat -s chromium` catches JS console output in a pinch.
+`just inspect` prints the steps; `just log` tails logcat filtered to the app, and `adb logcat -s
+chromium` catches JS console output in a pinch.
+
+**Driving the share target from the dev machine** (once M1.1 lands) — faster than sharing by hand from
+a browser on every iteration:
+
+```bash
+adb shell am start -a android.intent.action.SEND -t text/plain \
+  --es android.intent.extra.TEXT "https://stephango.com/obsidian" \
+  -n it.slowmail.obsidianreader/.share.ShareReceiverActivity
+```
 
 **Foldable matrix (D7).** Test grid for anything touching the reader: cover screen portrait, inner
 screen, fold/unfold mid-session, split-screen with Obsidian (share from a split browser is a realistic
