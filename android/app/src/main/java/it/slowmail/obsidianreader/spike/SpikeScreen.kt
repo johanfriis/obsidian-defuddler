@@ -1,4 +1,4 @@
-package it.slowmail.clipper.spike
+package it.slowmail.obsidianreader.spike
 
 import android.content.ActivityNotFoundException
 import android.content.ClipData

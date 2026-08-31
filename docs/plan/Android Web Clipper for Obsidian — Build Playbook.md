@@ -50,7 +50,7 @@ everything else was decided by Johan explicitly.
 | D8 | Highlighter (when it lands, M4) is in-session only — no cross-visit persistence | One-shot clip flow doesn't need the desktop extension's cross-visit storage. Flag to change. |
 | D9 | Single configured vault in v1 *(default)* | Screenshot 3's vault dropdown becomes a settings value; multi-vault only if ever needed. |
 | D10 | Clip sheet allows editing both properties and note body *(default)* | Matches desktop clipper. |
-| D11 | `minSdk 26`, `targetSdk 36` *(default)* | Low minSdk costs nothing; target current Android 16. |
+| D11 | `minSdk 31`, `targetSdk 36` | Sole target is the Find N6 on Android 16, so reach is irrelevant; 31 drops the `PendingIntent` mutability and pre-scoped-storage compat branches. Target current Android 16. |
 | D12 | Sideload-only distribution *(default)* | Personal keystore; no Play Store steps anywhere in this playbook. |
 | D13 | Bookmark-only fallback ships in M2, not polish *(default)* | Graceful failure is part of a trustworthy save pipeline. |
 | D14 | Extraction regression harness starts in M1 *(default)* | Every submodule bump is guarded from the beginning. |
@@ -135,7 +135,7 @@ one alias — `webextension-polyfill → jsbridge/shim/browser.ts` — implement
 `storage-utils`/`i18n` — treat that as plan B, discovered during M0/M1.
 
 ```text
-android/                              Gradle project (Kotlin, Compose, minSdk 26, targetSdk 36)
+android/                              Gradle project (Kotlin, Compose, minSdk 31, targetSdk 36)
   app/src/main/
     java/…/share/ShareReceiverActivity.kt
     java/…/reader/ReaderActivity.kt, ClipperBridge.kt, ReaderWebViewClient.kt
@@ -163,7 +163,7 @@ LICENSE, THIRD_PARTY_LICENSES, .gitignore, .gitattributes
 sass 1.103 / linkedom 0.18 / typescript 7) and a 3-test bootstrap suite passing via `npm test`
 (scoped by `vitest.config.ts` so upstream's vendored tests don't run by accident — M1.7 wires those in
 deliberately). §3's upstream receipts re-verified against the pinned checkout. P0.6 done — scaffold at
-`android/` (package `it.slowmail.clipper`, wrapper committed, Gradle 8.14.3 / AGP 8.13.0 /
+`android/` (package `it.slowmail.obsidianreader`, wrapper committed, Gradle 8.14.3 / AGP 8.13.0 /
 Kotlin 2.2.21 / Compose BOM 2025.06.01), with the M0 Spike A harness (§6) already wired as the main
 screen so the first install can exercise A2/A3/A4 immediately. **Caveat:** the cloud session could not
 run an Android build (`dl.google.com` blocked there — Kotlin sources syntax-checked with a standalone
@@ -203,8 +203,8 @@ P0.4 Node, then the acceptance list.
   In `jsbridge/`: `npm init -y`, `npm i -D esbuild sass vitest linkedom typescript` and
   `npm i defuddle@0.19.3 dayjs`.
 - **P0.6 — App scaffold.** New Android Studio project: "Empty Activity" (Compose), Kotlin DSL, package
-  e.g. `it.slowmail.clipper` (final name at G2 — package id is internal and can stay regardless of
-  branding), `minSdk 26`, `targetSdk 36`. Commit the wrapper (`gradlew` + `gradlew.bat`).
+  `it.slowmail.obsidianreader` (final name at G2 — package id is internal and can stay regardless of
+  branding), `minSdk 31`, `targetSdk 36`. Commit the wrapper (`gradlew` + `gradlew.bat`).
 
 ### Acceptance
 

@@ -72,7 +72,7 @@ The WebView has its own cookie jar, so paywalled and logged-in pages will not ma
 ## Repository layout
 
 ```
-android/                          Gradle project (Kotlin, Compose, minSdk 26)
+android/                          Gradle project (Kotlin, Compose, minSdk 31)
   app/src/main/
     java/…/share/ShareReceiverActivity.kt
     java/…/reader/ReaderActivity.kt, ClipperBridge.kt, ReaderWebViewClient.kt

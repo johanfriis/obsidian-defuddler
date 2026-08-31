@@ -7,13 +7,13 @@ plugins {
 }
 
 android {
-    namespace = "it.slowmail.clipper"
+    namespace = "it.slowmail.obsidianreader"
     compileSdk = 36
 
     defaultConfig {
         // Package id is internal; the shipped app name/icon are a G2 decision.
-        applicationId = "it.slowmail.clipper"
-        minSdk = 26
+        applicationId = "it.slowmail.obsidianreader"
+        minSdk = 31
         targetSdk = 36
         versionCode = 1
         versionName = "0.1"
