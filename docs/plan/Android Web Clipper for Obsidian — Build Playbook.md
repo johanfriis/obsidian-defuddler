@@ -68,6 +68,7 @@ everything else was decided by Johan explicitly.
 | D15 | Project license MIT; `THIRD_PARTY_LICENSES` shipped in APK; no Obsidian trademarks in shipped branding | See §17. |
 | D16 | Templates are authored/edited in the desktop clipper and imported here as JSON *(default)* | v1 imports and selects templates; it does not include a template editor. |
 | D18 | `SafWriter` (M2.4) and SAF hardening (M6.3) deferred, not deleted | Follows from D2: with no SAF save path there is nothing to write or harden. **The original justification (SAF bypasses Obsidian's triggers) turned out not to separate the two options — A5 showed `obsidian://` bypasses them too.** What the deferral now rests on is cost: `SafWriter` reimplements append/overwrite that Obsidian gives us free, plus tree-URI permission plumbing to build and harden. Two accepted trades: (1) `obsidian://` always foregrounds Obsidian (A4) — SAF would have allowed a true background save; (2) the URI contract is now a single point of failure — acceptable because notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss. |
+| D19 | Bundle English UI strings only (`LOCALES = ['en']`) and highlight.js's ~40-language `lib/common` rather than the full ~190 | Johan's call, 2026-08-31, confirming the B1 trims. Both degrade gracefully — `getMessage` falls back to English, `highlightElement` leaves an unregistered language unstyled — and both are one-line reverts in `jsbridge/build.mjs`. |
 | D17 | Track the current stable toolchain (AGP/Gradle/JDK) rather than pinning to an older one or shimming | Standard tools at their sanctioned versions beat local workarounds; migrations are cheapest taken early. Toolchain versions live in `android/gradle/libs.versions.toml`, `android/gradle/wrapper`, `android/gradle/gradle-daemon-jvm.properties` and `mise.toml`. |
 
 ## 2. Gate outcomes
@@ -143,10 +144,21 @@ Filled in as gates are passed. Empty = not reached.
   design question. Two trims in `build.mjs`, both graceful degradations, bring prod to 1.2 MB and the
   committed debug artifact to 2.0 MB:
   - `LOCALES = ['en']` — drops ~1 MB of other languages; `getMessage` falls back to English for
-    anything unbundled. **Open: does Johan want the reader UI in a language other than English?**
+    anything unbundled.
   - `HLJS = 'highlight.js/lib/common'` — ~40 mainstream languages instead of ~190, saving ~700 KB.
     `hljs.highlightElement` leaves an unregistered language unstyled rather than throwing.
-  - Neither is in the Decisions log yet — they are reversible one-liners awaiting Johan's confirmation.
+  - **Both confirmed by Johan 2026-08-31 → D19.**
+- **Where the remaining 1.2 MB actually is** (prod, measured from the esbuild metafile): defuddle
+  740 KB, upstream+ours 191 KB, highlight.js 160 KB, dayjs 62 KB, dompurify 29 KB, en locale 22 KB.
+  **Splitting the bundle into async-loaded chunks was considered and rejected** (2026-08-31): defuddle
+  is 61% of the payload and is needed synchronously the moment the reader toggles, so the only real
+  deferral candidate is highlight.js at 13%. Against that: the asset is local (no network to overlap),
+  esbuild's code splitting requires ESM — which needs script tags or `import()`, both CSP-subject and
+  resolved relative to the *page's* origin — and deferring hljs means patching upstream's static
+  `import hljs` and its synchronous `highlightElement` call sites, which §14's bump procedure would
+  pay for on every submodule bump. One bundle injected via `evaluateJavascript` also keeps the JS
+  entirely out of CSP's reach. Revisit only if B3 shows `evaluateJavascript` failing on ~2 MB, and
+  then prefer `WebViewAssetLoader` over splitting.
 - **Inline sourcemaps are opt-in** (`npm run build:debug`), because they triple the artifact. The
   committed bundle is unminified with `DEBUG_MODE` on, which reads fine in `chrome://inspect` unaided.
 - **Named ahead of B3 — page CSP is the live risk.** The reader strips the page's own stylesheets
