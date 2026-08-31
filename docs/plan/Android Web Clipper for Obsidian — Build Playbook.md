@@ -69,6 +69,7 @@ everything else was decided by Johan explicitly.
 | D16 | Templates are authored/edited in the desktop clipper and imported here as JSON *(default)* | v1 imports and selects templates; it does not include a template editor. |
 | D18 | `SafWriter` (M2.4) and SAF hardening (M6.3) deferred, not deleted | Follows from D2: with no SAF save path there is nothing to write or harden. **The original justification (SAF bypasses Obsidian's triggers) turned out not to separate the two options — A5 showed `obsidian://` bypasses them too.** What the deferral now rests on is cost: `SafWriter` reimplements append/overwrite that Obsidian gives us free, plus tree-URI permission plumbing to build and harden. Two accepted trades: (1) `obsidian://` always foregrounds Obsidian (A4) — SAF would have allowed a true background save; (2) the URI contract is now a single point of failure — acceptable because notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss. |
 | D19 | Bundle English UI strings only (`LOCALES = ['en']`) and highlight.js's ~40-language `lib/common` rather than the full ~190 | Johan's call, 2026-08-31, confirming the B1 trims. Both degrade gracefully — `getMessage` falls back to English, `highlightElement` leaves an unregistered language unstyled — and both are one-line reverts in `jsbridge/build.mjs`. |
+| D20 | Reader CSS is delivered as an inline `<style>` by default, not upstream's blob-URL `<link>` — for `reader.css` and `highlighter.css` alike | Johan's call, 2026-08-31 at G0. Measured: the blob path is refused by any page with a `style-src` that omits `blob:` (github.com), leaving the reader stripped and unstyled. Inlining costs nothing on pages without CSP, and detecting a refusal in order to fall back is harder than always inlining. Implemented without patching upstream — see `installStyle` in `jsbridge/src/bundle-entry.ts`. |
 | D17 | Track the current stable toolchain (AGP/Gradle/JDK) rather than pinning to an older one or shimming | Standard tools at their sanctioned versions beat local workarounds; migrations are cheapest taken early. Toolchain versions live in `android/gradle/libs.versions.toml`, `android/gradle/wrapper`, `android/gradle/gradle-daemon-jvm.properties` and `mise.toml`. |
 
 ## 2. Gate outcomes
@@ -203,15 +204,24 @@ ellipsizes.
   police; our main-world injection is policed. `installTrustedTypesPolicy()` (bundle-entry.ts) creates
   a pass-through `default` policy, which YouTube permits because it sends no `trusted-types` directive
   naming allowed policies. With it, YouTube renders fully — title, author, date, player.
-- **Still blocked on github, both harmless-ish, both M1/M4 follow-ups:**
-  - `highlighter.css` is still delivered as a blob `<link>` and still refused. M4 needs the same inline
-    treatment where upstream calls `ensureHighlighterCSS`.
-  - `flatten-shadow-dom.js` is refused by `script-src`. Upstream's `script.onerror` resolves the
-    promise, so it degrades rather than hangs — but shadow-DOM pages will not be flattened, which may
-    cost extraction quality. Worth a look in B4/M1.7 fixtures.
-- **`YoutubeExtractor: failed to parse inline JSON`** on `m.youtube.com`. The reader renders, but
-  defuddle's YouTube extractor did not get the player JSON, so the transcript may not populate —
-  and M1's acceptance list requires it. **Owned by B4/M1**, not a B3 blocker.
+- **`highlighter.css` now inlines too (D20), verified on device.** `Reader.ensureHighlighterCSS`
+  guards on `obsidian-highlighter-stylesheet` exactly as the reader guards on its own id, so the same
+  `installStyle` call covers it. Re-run on github: `links: []`, `sheets: ["<inline> rules=331",
+  "<inline> rules=39"]` — **no CSS is refused on a CSP-strict page any more.** Done ahead of M4 so the
+  highlighter is not the one thing still broken when the pen is turned on.
+- **Still blocked on github:** `flatten-shadow-dom.js` is refused by `script-src` and there is no
+  equivalent trick — it must be a `<script>` the page executes. Upstream's `script.onerror` resolves
+  the promise, so it degrades rather than hangs, but shadow-DOM pages will not be flattened, which may
+  cost extraction quality. Worth a look in B4/M1.7 fixtures.
+- **The YouTube transcript does not render — confirmed, not suspected.** Probed after a 22-second
+  settle: no `.transcript-segment-text` segments and no `.player-container`. The chain is
+  `YoutubeExtractor: failed to parse inline JSON` (defuddle) → no `.youtube.transcript` element →
+  `wireTranscript` returns at its first guard (`reader-transcript.ts:52`) → neither the transcript
+  player nor its segments are ever built. The *video* does render, which is easy to mistake for the
+  transcript working: defuddle keeps the embed/thumbnail regardless. **M1's acceptance list requires
+  the transcript, so this needs an owner — B4 is the place to work out whether the parse failure is
+  specific to `m.youtube.com` (the mobile site the WebView is served, given our Chrome-mobile UA) or
+  general.** Not a B3 blocker; the reader itself is fine on YouTube.
 - **SPA reloads fire `onPageFinished` repeatedly** — github fired it four times for one navigation.
   The bundle's `obsidianReaderInitialized` guard held every time (each re-injection returned
   `"object"` and did not replace the surface). M1.6's re-extract action still needs to exist, but
@@ -224,9 +234,8 @@ ellipsizes.
    that document. The counter-argument is that this WebView exists to render a page Johan chose into
    our reader, and we already inject a bundle that rewrites the whole DOM. If accepted this becomes a
    D-entry; if not, YouTube (and any other Trusted Types site) is out of scope for the reader.
-2. **Is `inline` the right default for reader CSS?** Recommended above. The alternative — leaving
-   `link` as default and falling back on failure — means detecting the CSP refusal, which is harder
-   than simply always inlining.
+2. ~~**Is `inline` the right default for reader CSS?**~~ **Settled 2026-08-31 → D20**, extended to
+   `highlighter.css` at Johan's request.
 
 ## 3. Ground truth: upstream integration points
 
@@ -623,6 +632,8 @@ hand-written reader.
 
 - **M4.1** Enable the toolbar pen; verify `highlighter.ts` + `highlighter-overlays.ts` behave in the
   WebView (they're already in the bundle and their upstream tests already run — M1.7).
+  `highlighter.css` delivery is already handled — inlined since G0 per D20, verified on a CSP-strict
+  page — so M4 does not need to revisit it.
 - **M4.2** Storage shim policy per D8: highlights live in-memory per reader session, cleared on exit.
 - **M4.3** Wire highlights into `clip()` so the template's highlights variable populates the note;
   verify against a fixture.

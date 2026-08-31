@@ -114,6 +114,17 @@ private const val PROBE_JS = """
       htmlBg: getComputedStyle(html).backgroundColor,
       toolbar: !!document.querySelector('.obsidian-reader-settings'),
       outline: !!document.querySelector('.obsidian-reader-outline'),
+      transcript: (function () {
+        var segs = document.querySelectorAll('.transcript-segment-text');
+        if (!segs.length) return document.querySelector('.player-container') ? 'player, no segments' : 'none';
+        var chars = 0;
+        for (var i = 0; i < segs.length; i++) chars += segs[i].textContent.length;
+        return segs.length + ' segments, ' + chars + ' chars';
+      })(),
+      highlighterStyleTag: (function () {
+        var el = document.getElementById('obsidian-highlighter-stylesheet');
+        return el ? el.tagName + (el.tagName === 'STYLE' ? '(' + el.textContent.length + ')' : '') : 'MISSING';
+      })(),
       readerStyleTag: (function () {
         var el = document.getElementById('obsidian-reader-styles');
         return el ? el.tagName + (el.tagName === 'STYLE' ? '(' + el.textContent.length + ')' : '') : 'MISSING';
@@ -158,7 +169,8 @@ private fun SpikeBScreen() {
     var url by remember { mutableStateOf(PRESETS[0].second) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var autoInject by remember { mutableStateOf(true) }
-    var cssMode by remember { mutableStateOf("link") }
+    // Matches the bundle default (G0: inline is M1's default, not a fallback).
+    var cssMode by remember { mutableStateOf("inline") }
 
     fun say(line: String) {
         log.add(line)

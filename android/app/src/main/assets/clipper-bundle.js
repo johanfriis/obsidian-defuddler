@@ -40945,13 +40945,20 @@ body.obsidian-highlighter-active .obsidian-highlight-overlay {
 
   // src/bundle-entry.ts
   var READER_STYLE_ID = "obsidian-reader-styles";
-  function installReaderCss() {
-    if (document.getElementById(READER_STYLE_ID)) return false;
+  var HIGHLIGHTER_STYLE_ID = "obsidian-highlighter-stylesheet";
+  function installStyle(id, asset) {
+    if (document.getElementById(id)) return false;
     const style = document.createElement("style");
-    style.id = READER_STYLE_ID;
-    style.textContent = assets["reader.css"] ?? "";
+    style.id = id;
+    style.textContent = assets[asset] ?? "";
     (document.head ?? document.documentElement).appendChild(style);
     return true;
+  }
+  function installReaderCss() {
+    return installStyle(READER_STYLE_ID, "reader.css");
+  }
+  function installHighlighterCss() {
+    return installStyle(HIGHLIGHTER_STYLE_ID, "highlighter.css");
   }
   function installTrustedTypesPolicy() {
     const tt = window.trustedTypes;
@@ -40972,9 +40979,12 @@ body.obsidian-highlighter-active .obsidian-highlight-overlay {
   function isActive() {
     return document.documentElement.classList.contains("obsidian-reader-active");
   }
-  async function toggle(cssMode = "link") {
+  async function toggle(cssMode = "inline") {
     installTrustedTypesPolicy();
-    if (cssMode === "inline") installReaderCss();
+    if (cssMode === "inline") {
+      installReaderCss();
+      installHighlighterCss();
+    }
     const wasActive = isActive();
     const active = await Reader.toggle(document);
     if (!wasActive) {
@@ -40984,7 +40994,15 @@ body.obsidian-highlighter-active .obsidian-highlight-overlay {
   }
   if (!window.obsidianReaderInitialized) {
     window.obsidianReaderInitialized = true;
-    window.__clipper = { Reader, toggle, isActive, installReaderCss, installTrustedTypesPolicy, browser: browser_default };
+    window.__clipper = {
+      Reader,
+      toggle,
+      isActive,
+      installReaderCss,
+      installHighlighterCss,
+      installTrustedTypesPolicy,
+      browser: browser_default
+    };
     initializeI18n().catch((error) => {
       console.warn("[clipper] i18n init failed", error);
     });

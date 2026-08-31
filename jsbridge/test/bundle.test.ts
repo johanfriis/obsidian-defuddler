@@ -155,6 +155,17 @@ describe('clipper-bundle', () => {
     expect(run('window.__clipper.browser.runtime.getURL("nope.css")')).toBe('nope.css');
   });
 
+  it('installs highlighter.css inline too, under the id ensureHighlighterCSS guards on', () => {
+    // M4 turns the pen on; without this, highlighter.css stays the one blob <link> a CSP-strict
+    // page still refuses (§2, B3).
+    expect(run('window.__clipper.installHighlighterCss()')).toBe(true);
+    expect(run('document.getElementById("obsidian-highlighter-stylesheet").tagName')).toBe('STYLE');
+    expect(
+      run<number>('document.getElementById("obsidian-highlighter-stylesheet").textContent.length'),
+    ).toBeGreaterThan(500);
+    expect(run('window.__clipper.installHighlighterCss()')).toBe(false);
+  });
+
   it('installs reader.css as an inline <style> upstream will not overwrite', () => {
     // The CSP fallback (see bundle-entry.ts): upstream keeps any element carrying this id through
     // its stylesheet-strip pass and only creates its own blob <link> when none exists. If that
