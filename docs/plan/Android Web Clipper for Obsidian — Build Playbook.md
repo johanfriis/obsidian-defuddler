@@ -41,7 +41,7 @@ everything else was decided by Johan explicitly.
 | # | Decision | Rationale |
 |---|---|---|
 | D1 | Dedicated Android app, not a browser extension | Mobile browsers relay `obsidian://` unreliably; a first-class app fires the intent itself (Brief). |
-| D2 | Save via `obsidian://new`, clipboard-first; `content=` and SAF as fallbacks | Lets Obsidian run its usual import triggers (Brief). Fallback order confirmed at G0. |
+| D2 | Save via `obsidian://new`, clipboard-first, with `content=` as the only fallback. No SAF write path. On failure, tell Johan — never save by another route | Lets Obsidian run its usual import triggers (Brief). A SAF write bypasses those triggers, so a silent SAF fallback produces a note that looks saved but skipped Templater et al. A visible failure beats a silent divergence. Revised at G0 (2026-08-31). |
 | D3 | Three-layer architecture: upstream clip engine (dependency) + vendored reader/highlighter + native Kotlin/Compose shell | See Implementation Plan §Architecture. |
 | D4 | Reader (M1) before clip/save (M2) | Johan's call, 2026-08-30. The reading experience is part of the daily driver, not polish. |
 | D5 | v1 = M0 + M1 + M2 + M3 (templates incl. import and URL auto-selection). Post-v1 order: highlighter → reader style settings → in-app login/polish | Johan's call, 2026-08-30. |
@@ -56,6 +56,7 @@ everything else was decided by Johan explicitly.
 | D14 | Extraction regression harness starts in M1 *(default)* | Every submodule bump is guarded from the beginning. |
 | D15 | Project license MIT; `THIRD_PARTY_LICENSES` shipped in APK; no Obsidian trademarks in shipped branding | See §17. |
 | D16 | Templates are authored/edited in the desktop clipper and imported here as JSON *(default)* | v1 imports and selects templates; it does not include a template editor. |
+| D18 | `SafWriter` (M2.4) and SAF hardening (M6.3) deferred, not deleted | Follows from the D2 revision: with no SAF save path there is nothing to write or harden. Kept in the plan with rationale so the analysis survives if the `content=` ceiling ever becomes a real annoyance. Accepted trade: SAF was also the hedge against Obsidian changing `obsidian://`, so that contract is now a single point of failure — acceptable because notes are plain markdown in a folder Johan controls, making recovery manual but never data-loss. |
 | D17 | Track the current stable toolchain (AGP/Gradle/JDK) rather than pinning to an older one or shimming | Standard tools at their sanctioned versions beat local workarounds; migrations are cheapest taken early. Toolchain versions live in `android/gradle/libs.versions.toml`, `android/gradle/wrapper`, `android/gradle/gradle-daemon-jvm.properties` and `mise.toml`. |
 
 ## 2. Gate outcomes
@@ -64,9 +65,33 @@ Filled in as gates are passed. Empty = not reached.
 
 | Gate | Question | Outcome | Date |
 |---|---|---|---|
-| G0 | Does `obsidian://new` + `&clipboard` work on the Find N6? What is the reliable `content=` size limit? Is the vendored reader viable in a WebView? | — | — |
+| G0 | Does `obsidian://new` + `&clipboard` work on the Find N6? What is the reliable `content=` size limit? Is the vendored reader viable in a WebView? | Spike A passed — see below. Spike B not yet run, so G0 is not closed. | A: 2026-08-31 |
 | G1 | Is reader parity good enough to build on (vs. reworking Layer B)? | — | — |
 | G2 | v1 ship review: app name + icon chosen; post-v1 order reconfirmed | — | — |
+
+### G0 / Spike A findings — 2026-08-31, Find N6 (CPH2765), Android 16 / API 36, vault `Sanctum`
+
+- **A1 pass.** `obsidian://new?vault=…&file=…&clipboard` created the note with the clipboard content.
+  The Android 12+ "pasted from clipboard" notification does appear; it is not disruptive.
+- **A2 pass.** The production-shaped sequence — `setPrimaryClip` then `startActivity` in the same tap —
+  works. No focus/timing problem, so D2's clipboard-first path is confirmed end to end.
+- **A3 — no practical size ceiling.** `content=` bodies of 2 / 16 / 64 / 128 / 512 KB all landed with
+  byte counts matching the payload exactly (no truncation at any size). 1024 KB fails, and fails
+  *loudly*: `startActivity` throws and is caught, no note is written, nothing is silently truncated.
+  Percent-encoding inflates the body roughly **2.7×** on the way into the parcel, so what hits the
+  ~1 MB binder limit is the encoded URI, not the markdown. For scale, 512 KB of markdown is ~80,000
+  words; a long feature article is 30–60 KB. **Consequence: no threshold constant.** `SavePipeline`
+  tries `content=` and catches, rather than branching on a measured maximum (M2.3).
+- **Default behaviour is de-duplicate, not overwrite.** Firing the same `file=` twice yields
+  `note 1.md` alongside `note.md`. A4's `overwrite=true` is what changes this.
+- **Landmine found, applies to M2.** The spike harness kept the full encoded URI in a
+  `rememberSaveable`; at 512 KB that is ~1.4 MB of saved instance state and the activity died with
+  `TransactionTooLargeException` in `PendingTransactionActions$StopInfo.run` *after* the note had
+  already saved — a crash that looks like a save failure but is not. **Note content must never enter
+  saved instance state** in `ReaderActivity`/`SavePipeline`, at any size.
+- **Only `md.obsidian` claims the `obsidian://` scheme** on this device, so there is no chooser dialog
+  to defeat the silent path.
+- **Still open:** A4 (behaviour flags) and A5 (vault automations) not yet run.
 
 ## 3. Ground truth: upstream integration points
 
@@ -123,7 +148,7 @@ Share sheet (text/plain URL)
       → reader style settings                   [M5 — screenshot 2]
   → "Clip" → JS bridge → clip({...})            [M2]
   → Compose clip sheet                          [M2/M3 — screenshot 3]
-  → SavePipeline: clipboard → obsidian://new → content= → SAF   [M2]
+  → SavePipeline: clipboard → obsidian://new → content= → report failure   [M2]
 ```
 
 **Shim strategy (refines the plan):** upstream already funnels every extension API through
@@ -141,8 +166,8 @@ android/                              Gradle project (Kotlin, Compose, minSdk 31
     java/…/share/ShareReceiverActivity.kt
     java/…/reader/ReaderActivity.kt, ClipperBridge.kt, ReaderWebViewClient.kt
     java/…/clip/ClipSheet.kt, ClipResult.kt
-    java/…/save/SavePipeline.kt, ObsidianUri.kt, SafWriter.kt
-    java/…/settings/                  vault name, tree URI, prefs, template store
+    java/…/save/SavePipeline.kt, ObsidianUri.kt      (SafWriter.kt deferred — D18)
+    java/…/settings/                  vault name, prefs, template store
     assets/clipper-bundle.js          built artifact, committed
 jsbridge/
   package.json, build.mjs             esbuild via Node API (node build.mjs — cross-platform)
@@ -234,9 +259,10 @@ whole design stands on.
   `ClipboardManager.setPrimaryClip(...)` then `startActivity(Intent(ACTION_VIEW, uri))` in the same tap.
   This is the exact sequence `SavePipeline` will use — if A1 passes but A2 fails (focus/timing), we need
   to know now.
-- **A3.** Probe `content=` limits (legacy fallback): fire URIs with 2 KB / 16 KB / 64 KB / 128 KB bodies
-  from the scratch activity until it breaks (binder transactions hard-fail around ~500 KB; the practical
-  ceiling is what we measure). **Record the reliable maximum in §2.**
+- **A3.** ~~Probe `content=` limits and record the reliable maximum.~~ **Done 2026-08-31 — see §2.**
+  No practical ceiling: clean up to 512 KB, loud catchable failure at 1024 KB. The ~500 KB figure in the
+  original plan was wrong — it is the limit for Intent *extras*, whereas this payload rides in the data
+  URI. Outcome: no threshold constant; `SavePipeline` tries and catches.
 - **A4.** Verify `&append=true`, `&overwrite=true`, and `&silent=true` behave as documented against an
   existing note.
 - **A5.** Confirm whatever vault automations Johan relies on (e.g. Templater folder templates) fire the
@@ -264,7 +290,7 @@ whole design stands on.
 | Finding | Consequence |
 |---|---|
 | A1/A2 pass | Clipboard-first stays the primary save path (D2 confirmed). |
-| Clipboard path fails | Primary becomes `content=` under the A3 limit, SAF above it; revisit D2. |
+| Clipboard path fails | Primary becomes `content=`; revisit D2. |
 | B3 renders usable reader | Layer B proceeds as designed → M1. |
 | B3 unusable/broken | Stop. Options: deeper shimming, or a native-lite reader (defuddle output in our own template) — decide before any M1 work. |
 
@@ -330,13 +356,15 @@ whole design stands on.
 - **M2.3 — SavePipeline.** Kotlin port of the §3 save recipe, in order: (1) compose
   `frontmatter + content`; (2) `ClipboardManager.setPrimaryClip` (plain, not sensitive-flagged);
   (3) build `obsidian://new` URI — `file` = folder + sanitized name, behavior flags, `vault`, optional
-  `silent`, bare `&clipboard` + short-error `content=`; (4) `startActivity`. Fallbacks: full
-  `content=` when note ≤ the A3 limit and clipboard mode is off/failed; SAF write above it.
-- **M2.4 — SafWriter + setup screen.** First-run setup: pick vault folder via
-  `ACTION_OPEN_DOCUMENT_TREE`, `takePersistableUriPermission`, prefill vault name from the tree's folder
-  name (editable — must match Obsidian's vault name exactly), default folder ("Clippings"), silent-open
-  toggle. `SafWriter` implements create/overwrite/append via `DocumentFile` (append = read + concat +
-  rewrite), optional `obsidian://open` after a SAF save.
+  `silent`, bare `&clipboard` + short-error `content=`; (4) `startActivity`. Fallback: full
+  `content=` when clipboard mode is off/failed. No size threshold — A3 found no practical ceiling and
+  the oversized case throws catchably, so try and catch rather than pre-checking a magic number. If
+  that catch fires, surface the failure to Johan (D2); do not save by another route.
+- **M2.4 — Setup screen.** First-run setup: vault name (typed, must match Obsidian's vault name
+  exactly), default folder ("Clippings"), silent-open toggle.
+  *`SafWriter` and the `ACTION_OPEN_DOCUMENT_TREE` / `takePersistableUriPermission` plumbing are
+  deferred per D18* — with no SAF save path there is nothing to write. If the `content=` ceiling ever
+  becomes a real annoyance, this is where the writer would go back in.
 - **M2.5 — Bookmark-only fallback (D13).** When extraction yields nothing usable, offer a one-tap
   bookmark clip: frontmatter (title, source, created, tags) + URL, no body. Also reachable explicitly
   from the reader menu ("Clip as bookmark").
@@ -349,8 +377,10 @@ whole design stands on.
   bookmark note).
 - [ ] Note name, folder, properties, and body edits in the sheet are reflected in the saved note.
 - [ ] Re-clipping the same URL respects the template behavior (A4 semantics).
-- [ ] A note larger than the A3 limit saves via the clipboard path; with clipboard artificially
-  disabled it saves via SAF and appears in Obsidian.
+- [ ] A very large note (>512 KB) saves via the clipboard path; with clipboard artificially disabled
+  the `content=` path reports a clear failure rather than saving silently or truncating (D2).
+- [ ] Backgrounding the app mid-clip with a large note does not crash it — note content stays out of
+  saved instance state (G0 landmine).
 - [ ] Vault automations fire (A5 re-check with real clips).
 - [ ] Second clip started from the share sheet while Obsidian is foregrounded works (round-trip focus).
 
@@ -418,7 +448,8 @@ whole design stands on.
   once per site.
 - **M6.2** Error-state pass: offline, timeouts, HTTP errors, extraction failures — every path ends in
   either a usable reader, a bookmark offer, or a clear retry.
-- **M6.3** SAF hardening: detect revoked/moved tree permission and re-prompt instead of failing silently.
+- **M6.3** *Deferred (D18).* SAF hardening — detect revoked/moved tree permission and re-prompt instead
+  of failing silently. Only relevant if the SAF writer returns.
 - **M6.4** Share-without-URL (plain text selection shared to the app): offer a quick-note clip into the
   vault. Nice-to-have; drop if it drags.
 - **M6.5** Settings export/import (templates + prefs as one JSON) for phone migration.
@@ -456,14 +487,14 @@ check ColorOS's "recommended sharing" settings first.
 
 | Risk | Mitigation | Retired by |
 |---|---|---|
-| Android/ColorOS blocks the clipboard handoff to Obsidian | Measured fallbacks: `content=` under the A3 limit, SAF above | G0 |
+| Android/ColorOS blocks the clipboard handoff to Obsidian | Fallback to `content=` (A1/A2 passed at G0, so not currently a live risk) | G0 |
 | Vendored reader breaks or fights the WebView | Timeboxed spike before any investment; native-lite fallback named at G0 | G0/G1 |
 | Upstream drift breaks extraction or highlighter on bump | Pinned submodule; fixture snapshots + upstream tests in our harness; §14 procedure | M1.7 onward |
 | Sites block the WebView UA or bot-detect | Chrome-mobile UA (M1.2), cookie persistence, login flow (M6.1), bookmark fallback (M2.5) | M2/M6 |
 | SPA/JS-heavy pages extract poorly | Settle delay + re-extract action (M1.6), bookmark fallback | M1/M2 |
-| Intent URI size limits truncate `content=` saves | A3 measurement; clipboard-first; SAF above limit | M0/M2 |
+| Intent URI size limits truncate `content=` saves | A3 measured no truncation up to 512 KB; oversized fails loudly, never silently | M0 |
 | Windows dev friction (paths, EOL, drivers) | §14 parity rules, P0.1 gitattributes, P0.3 driver note | Phase 0 |
-| Obsidian changes `obsidian://` behavior | Recipe isolated in `ObsidianUri.kt` + §3 documents the contract; SAF path is Obsidian-independent | — |
+| Obsidian changes `obsidian://` behavior | Recipe isolated in `ObsidianUri.kt` + §3 documents the contract. Accepted single point of failure per D18 — notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss | — |
 
 ## 16. UI inventory — every visible element has one owner
 

@@ -97,7 +97,11 @@ fun SpikeScreen() {
     var silent by rememberSaveable { mutableStateOf(false) }
     var customKb by rememberSaveable { mutableStateOf("192") }
     var status by rememberSaveable { mutableStateOf("No URI fired yet.") }
-    var lastUri by rememberSaveable { mutableStateOf("") }
+    // Plain remember, NOT rememberSaveable: this holds the whole percent-encoded
+    // URI, so a 512 KB content= body lands ~1.4 MB in saved instance state and
+    // blows the binder limit when the activity stops. Same trap applies to
+    // ReaderActivity/SavePipeline in M2 - note content stays out of saved state.
+    var lastUri by remember { mutableStateOf("") }
 
     fun fire(uri: String, note: String) {
         prefs.edit().putString("vault", vault).apply()

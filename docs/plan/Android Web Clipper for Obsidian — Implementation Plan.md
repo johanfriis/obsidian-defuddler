@@ -56,9 +56,9 @@ Share sheet (text/plain URL)
 2. Write to the **Android system clipboard** via `ClipboardManager` in Kotlin (deterministic; do not rely on the WebView's `navigator.clipboard`).
 3. Build `obsidian://new?vault=<enc>&file=<enc path>&clipboard=true`, plus `append`/`prepend`/`overwrite` from the template's behavior and `silent=true` if configured. This mirrors `src/utils/obsidian-note-creator.ts`, which is clipboard-first with a `content=` legacy fallback.
 4. `startActivity(Intent(ACTION_VIEW, uri))`.
-5. **Fallbacks**, in order: `content=` in the URI (legacy mode) for short notes → SAF `DocumentFile` write into the persisted vault tree URI, then optionally `obsidian://open` to surface it.
+5. **Fallback:** `content=` in the URI (legacy mode) when clipboard mode is off or failed. No SAF write path and no size threshold — see Build Playbook D2/D18 and the G0 Spike A findings. If `content=` also fails, report the failure to Johan rather than saving by another route.
 
-Because Johan's vault is on device storage, the SAF fallback is available. Ask for the vault tree URI once at setup and persist it with `takePersistableUriPermission`.
+Johan's vault is on device storage, so a SAF fallback would be *possible* — but it is deliberately not used: a SAF write bypasses Obsidian's new-file triggers (Templater et al.), so a note would look saved while silently skipping the automations that make it useful. Deferred, not deleted (Build Playbook D18).
 
 ### In-app login (per Johan's answer)
 
@@ -77,8 +77,8 @@ android/                          Gradle project (Kotlin, Compose, minSdk 31)
     java/…/share/ShareReceiverActivity.kt
     java/…/reader/ReaderActivity.kt, ClipperBridge.kt, ReaderWebViewClient.kt
     java/…/clip/ClipSheet.kt, ClipResult.kt
-    java/…/save/SavePipeline.kt, ObsidianUri.kt, SafWriter.kt
-    java/…/settings/                 vault name, tree URI, reader prefs, templates
+    java/…/save/SavePipeline.kt, ObsidianUri.kt     (SafWriter.kt deferred — D18)
+    java/…/settings/                 vault name, reader prefs, templates
     assets/clipper-bundle.js         built artifact, committed
     assets/clipper.css
 jsbridge/
@@ -97,7 +97,7 @@ docs/plan/
 > **Superseded (2026-08-30):** the live milestone cut is in the [Build Playbook](<Android Web Clipper for Obsidian — Build Playbook.md>) — v1 = spike → reader → clip/save → templates; highlighter, reader settings and in-app login follow post-v1. The list below is kept as historical rationale.
 
 **M0 — De-risking spike (do this first, ~1 day).** Two assumptions carry the whole design:
-- On-device: does Obsidian Android honour `obsidian://new?…&clipboard=true`? Android 10+ restricts background clipboard reads; Obsidian is foregrounded by the intent so it should work, but Android 12+ will show a "pasted from clipboard" toast. If it fails, the primary path becomes `content=` / SAF.
+- ~~On-device: does Obsidian Android honour `obsidian://new?…&clipboard=true`?~~ **Answered 2026-08-31 (G0/A1+A2): yes.** The Android 12+ "pasted from clipboard" notification does appear and is not disruptive. Clipboard-first stands.
 - In a bare WebView: load `clipper-bundle.js`, call `Reader.toggle(document)` on a real article, confirm screenshot 1's toolbar renders and is usable.
 
 **M1 — Share to reader.** Share target, `ReaderActivity`, cookie/UA setup, bundle injection, reader mode. No clipping yet.
@@ -108,7 +108,7 @@ docs/plan/
 
 **M4 — Reader settings + templates.** Screenshot 2's font/width/theme controls (they are already in `ReaderSettings`); template import from `kepano/clipper-templates`; template management UI.
 
-**M5 — Polish.** Bookmark-only fallback, error states, in-app login flow, SAF fallback hardening.
+**M5 — Polish.** Bookmark-only fallback, error states, in-app login flow. (SAF hardening deferred — D18.)
 
 ## Licensing
 
