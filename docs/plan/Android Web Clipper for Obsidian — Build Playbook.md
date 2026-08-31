@@ -36,12 +36,13 @@ Bumping either pin follows the procedure in §14 — never casually.
 - A fresh implementation session should read §1 (decisions), §2 (gate outcomes), §3 (upstream ground
   truth), and the milestone it is executing. Architecture & Rationale is background reading; Problem &
   UI Reference is where every "screenshot N" reference resolves.
-- **Where things stand (2026-08-31):** Phase 0 complete; **M0 Spike A and Spike B both complete**,
-  findings in §2 — several of them correct earlier assumptions, including one carried since the original
-  brief (now Problem & UI Reference). The reader renders on the Find N6 on all four test pages.
-  **GATE G0 is ready for Johan's judgement** (§6) — the technical questions are answered; two of the
-  answers carry trade-offs he should sign off before M1. Read §5's status block first for the
-  `just`-based dev loop, which post-dates the original text of this playbook.
+- **Where things stand (2026-08-31): M0 is complete and GATE G0 is closed, passed.** Phase 0 done;
+  Spikes A and B both pass on the Find N6; both G0 trade-offs signed off (D20 inline CSS, D21 Trusted
+  Types); B4 folded into M1.7 per D22. §2's findings correct several earlier assumptions, including
+  one carried since the original brief (now Problem & UI Reference) — read them before M1, especially
+  the M1.6 settle-time finding, which invalidates the "short delay" that task currently specifies.
+  **Resume at M1 (§7).** Read §5's status block first for the `just`-based dev loop, which post-dates
+  the original text of this playbook.
 - Expected effort: one milestone ≈ one to a few focused sessions. M0 is timeboxed to ~1 day.
 
 ## 1. Decisions log
@@ -70,6 +71,8 @@ everything else was decided by Johan explicitly.
 | D18 | `SafWriter` (M2.4) and SAF hardening (M6.3) deferred, not deleted | Follows from D2: with no SAF save path there is nothing to write or harden. **The original justification (SAF bypasses Obsidian's triggers) turned out not to separate the two options — A5 showed `obsidian://` bypasses them too.** What the deferral now rests on is cost: `SafWriter` reimplements append/overwrite that Obsidian gives us free, plus tree-URI permission plumbing to build and harden. Two accepted trades: (1) `obsidian://` always foregrounds Obsidian (A4) — SAF would have allowed a true background save; (2) the URI contract is now a single point of failure — acceptable because notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss. |
 | D19 | Bundle English UI strings only (`LOCALES = ['en']`) and highlight.js's ~40-language `lib/common` rather than the full ~190 | Johan's call, 2026-08-31, confirming the B1 trims. Both degrade gracefully — `getMessage` falls back to English, `highlightElement` leaves an unregistered language unstyled — and both are one-line reverts in `jsbridge/build.mjs`. |
 | D20 | Reader CSS is delivered as an inline `<style>` by default, not upstream's blob-URL `<link>` — for `reader.css` and `highlighter.css` alike | Johan's call, 2026-08-31 at G0. Measured: the blob path is refused by any page with a `style-src` that omits `blob:` (github.com), leaving the reader stripped and unstyled. Inlining costs nothing on pages without CSP, and detecting a refusal in order to fall back is harder than always inlining. Implemented without patching upstream — see `installStyle` in `jsbridge/src/bundle-entry.ts`. |
+| D21 | Install a pass-through Trusted Types `default` policy before the reader runs | Johan's call, 2026-08-31 at G0. Without it, pages sending `require-trusted-types-for 'script'` (YouTube) kill the reader outright — Defuddle's `innerHTML` and `Reader.apply`'s `DOMParser` both throw and nothing renders. A browser extension never meets this because its content script runs in an isolated world Trusted Types does not police; our main-world injection is policed. **The accepted trade:** the policy switches off the page's own XSS guard for the life of that document. Johan's reasoning — the reader/clip session is ephemeral, the page is one he chose, and we already inject a bundle that rewrites the whole DOM. Only creatable where the page sends no `trusted-types` directive naming allowed policies; where it is refused we log and the page fails visibly. See `installTrustedTypesPolicy` in `jsbridge/src/bundle-entry.ts`. |
+| D22 | B4's extraction-quality pass is folded into M1.7's fixture harness rather than run as a throwaway spike *(default)* | B3 already exercised extraction on four real pages including the two hard ones (CSP-strict, Trusted Types), so B4's remaining value is markdown/metadata quality on saved fixtures — which is exactly M1.7's job. Same work, but the output is kept and guards every future submodule bump (D14). M0 therefore ends at G0. Two B3 findings carry into M1.7 as fixture cases: unflattened shadow DOM on github, and the YouTube settle-time question. |
 | D17 | Track the current stable toolchain (AGP/Gradle/JDK) rather than pinning to an older one or shimming | Standard tools at their sanctioned versions beat local workarounds; migrations are cheapest taken early. Toolchain versions live in `android/gradle/libs.versions.toml`, `android/gradle/wrapper`, `android/gradle/gradle-daemon-jvm.properties` and `mise.toml`. |
 
 ## 2. Gate outcomes
@@ -78,7 +81,7 @@ Filled in as gates are passed. Empty = not reached.
 
 | Gate | Question | Outcome | Date |
 |---|---|---|---|
-| G0 | Does `obsidian://new` + `&clipboard` work on the Find N6? What is the reliable `content=` size limit? Is the vendored reader viable in a WebView? | **Spikes A and B both pass.** The reader renders on all four test pages. Two findings need Johan's sign-off before G0 closes — see "open at G0" below. | A: 2026-08-31, B: 2026-08-31 |
+| G0 | Does `obsidian://new` + `&clipboard` work on the Find N6? What is the reliable `content=` size limit? Is the vendored reader viable in a WebView? | **CLOSED — passed.** Spikes A and B both pass; the reader renders on all four test pages. Both trade-offs signed off by Johan → D20 (inline CSS) and D21 (Trusted Types). M0 ends here per D22. **Next: M1.** | A: 2026-08-31, B: 2026-08-31, closed: 2026-08-31 |
 | G1 | Is reader parity good enough to build on (vs. reworking Layer B)? | — | — |
 | G2 | v1 ship review: app name + icon chosen; post-v1 order reconfirmed | — | — |
 
@@ -244,15 +247,12 @@ ellipsizes.
   `"object"` and did not replace the surface). M1.6's re-extract action still needs to exist, but
   re-injection itself is safe.
 
-**Open at G0 — needs Johan, not Claude:**
+**Both G0 trade-offs settled by Johan, 2026-08-31 — G0 is closed:**
 
-1. **Make the Trusted Types default policy permanent?** It is what makes YouTube work at all. The
-   trade is real: a pass-through default policy switches off the page's own XSS guard for the life of
-   that document. The counter-argument is that this WebView exists to render a page Johan chose into
-   our reader, and we already inject a bundle that rewrites the whole DOM. If accepted this becomes a
-   D-entry; if not, YouTube (and any other Trusted Types site) is out of scope for the reader.
-2. ~~**Is `inline` the right default for reader CSS?**~~ **Settled 2026-08-31 → D20**, extended to
-   `highlighter.css` at Johan's request.
+1. ~~**Make the Trusted Types default policy permanent?**~~ **Yes → D21.** Johan: the reader/clip
+   session is ephemeral, so the reduced XSS guard on a page he chose is an acceptable cost.
+2. ~~**Is `inline` the right default for reader CSS?**~~ **Yes → D20**, extended to `highlighter.css`
+   at Johan's request.
 
 ## 3. Ground truth: upstream integration points
 
@@ -540,8 +540,13 @@ hand-written reader.
 - **M1.5 — Trademark sweep.** Replace the Obsidian gem icon in the vendored toolbar with a placeholder
   (final icon at G2). Grep vendored assets for other Obsidian marks. Lucide icons stay (ISC).
 - **M1.6 — Injection.** On `onPageFinished`: inject bundle (idempotent — upstream already guards with
-  `obsidianReaderInitialized`), settle briefly (rAF + short delay for SPA hydration), then
-  `Reader.toggle(document)`. Provide a "re-extract" action for pages that hydrate late. Toolbar buttons
+  `obsidianReaderInitialized`; B3 saw github fire `onPageFinished` four times for one navigation and
+  the guard held), then `__clipper.toggle()`.
+  **Revised by B3 (§2): a short settle delay cannot be the mechanism.** YouTube needs 6–15 s before
+  the transcript is extractable — far beyond anything worth blocking the reader on. So either the
+  "re-extract" action carries this case and must be prominent rather than a hidden fallback, or
+  extraction waits on a readiness signal instead of a timer. Decide when building M1.6; do not just
+  pick a bigger number. Toolbar buttons
   whose milestones haven't arrived (pen → M4, Aa → M5) are hidden or no-op with a "coming later" toast —
   decide which looks less broken when wiring.
 - **M1.7 — Fixture harness.** `jsbridge/test/`: save 4–5 fixture pages (news article, YouTube watch
