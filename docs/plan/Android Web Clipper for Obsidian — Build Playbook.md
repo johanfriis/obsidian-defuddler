@@ -213,15 +213,32 @@ ellipsizes.
   equivalent trick — it must be a `<script>` the page executes. Upstream's `script.onerror` resolves
   the promise, so it degrades rather than hangs, but shadow-DOM pages will not be flattened, which may
   cost extraction quality. Worth a look in B4/M1.7 fixtures.
-- **The YouTube transcript does not render — confirmed, not suspected.** Probed after a 22-second
-  settle: no `.transcript-segment-text` segments and no `.player-container`. The chain is
-  `YoutubeExtractor: failed to parse inline JSON` (defuddle) → no `.youtube.transcript` element →
-  `wireTranscript` returns at its first guard (`reader-transcript.ts:52`) → neither the transcript
-  player nor its segments are ever built. The *video* does render, which is easy to mistake for the
-  transcript working: defuddle keeps the embed/thumbnail regardless. **M1's acceptance list requires
-  the transcript, so this needs an owner — B4 is the place to work out whether the parse failure is
-  specific to `m.youtube.com` (the mobile site the WebView is served, given our Chrome-mobile UA) or
-  general.** Not a B3 blocker; the reader itself is fine on YouTube.
+- **The YouTube transcript works — but extraction timing decides whether it is there.** Measured by
+  varying the settle between page load and toggle, everything else identical:
+
+  | settle | transcript |
+  |---|---|
+  | 6 s | absent |
+  | 15 s | heading + 2144 chars |
+  | 30 s | heading + 2144 chars |
+
+  **`YoutubeExtractor: failed to parse inline JSON` is a red herring — it appears in the successful
+  runs too**, so it is a non-fatal step in a fallback chain, not a cause. (An earlier reading of this
+  session treated it as the cause and wrongly concluded the transcript was broken; the correction is
+  recorded here so nobody re-derives it.)
+- **Consequence for M1.6, and it is a sharp one.** M1.6 currently says "settle briefly (rAF + short
+  delay for SPA hydration)". On YouTube the needed settle is somewhere between 6 and 15 seconds — far
+  beyond any delay worth blocking the reader on. So the fixed delay cannot be the mechanism that makes
+  YouTube work: either the re-extract action carries it (and needs to be prominent, not a hidden
+  fallback), or extraction waits on a readiness signal rather than a timer. **Design input for M1.6,
+  not a bug.**
+- **The interactive transcript layer never wires**, separately from the content. `reader-transcript.ts`
+  builds a pinned player, auto-scroll and clickable segments, all of which need a
+  `.youtube.transcript` element (`wireTranscript`'s first guard, line 52). No element on the rendered
+  page carries any `transcript`/`youtube`/`player` class — the transcript arrives as a plain
+  `<h2>Transcript</h2>` plus timestamped paragraphs. Content and interactivity fail independently, so
+  do not conflate them. **M1 acceptance ("shows the transcript in reader when available") is met by
+  the content; the interactive layer is a nice-to-have — flag for M5 if it is ever wanted.**
 - **SPA reloads fire `onPageFinished` repeatedly** — github fired it four times for one navigation.
   The bundle's `obsidianReaderInitialized` guard held every time (each re-injection returned
   `"object"` and did not replace the surface). M1.6's re-extract action still needs to exist, but

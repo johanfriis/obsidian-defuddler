@@ -115,11 +115,24 @@ private const val PROBE_JS = """
       toolbar: !!document.querySelector('.obsidian-reader-settings'),
       outline: !!document.querySelector('.obsidian-reader-outline'),
       transcript: (function () {
-        var segs = document.querySelectorAll('.transcript-segment-text');
-        if (!segs.length) return document.querySelector('.player-container') ? 'player, no segments' : 'none';
-        var chars = 0;
-        for (var i = 0; i < segs.length; i++) chars += segs[i].textContent.length;
-        return segs.length + ' segments, ' + chars + ' chars';
+        // Content and interactive layer fail independently: defuddle emits the transcript as a
+        // plain <h2>Transcript</h2> + timestamped paragraphs, while reader-transcript.ts's
+        // pinned player / auto-scroll / clickable segments need a `.youtube.transcript` element
+        // it never sees. Report both so they are never conflated again.
+        var head = null, chars = 0;
+        var hs = document.querySelectorAll('h1,h2,h3,h4');
+        for (var j = 0; j < hs.length; j++) {
+          if (/transcript/i.test(hs[j].textContent)) { head = hs[j]; break; }
+        }
+        if (head) {
+          var n = head.nextElementSibling;
+          while (n && !/^H[1-4]$/.test(n.tagName)) { chars += n.textContent.length; n = n.nextElementSibling; }
+        }
+        return {
+          content: head ? 'heading + ' + chars + ' chars' : 'absent',
+          interactive: document.querySelector('.player-container') ? 'wired'
+            : (document.querySelector('.youtube.transcript') ? 'element present, not wired' : 'not wired')
+        };
       })(),
       highlighterStyleTag: (function () {
         var el = document.getElementById('obsidian-highlighter-stylesheet');
