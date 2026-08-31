@@ -31,6 +31,10 @@ Bumping either pin follows the procedure in §14 — never casually.
   measurements (e.g. the `content=` size limit from M0), and correct anything reality disproves.
 - A fresh implementation session should read §1 (decisions), §2 (gate outcomes), §3 (upstream ground
   truth), and the milestone it is executing. The Implementation Plan is background reading.
+- **Where things stand (2026-08-31):** Phase 0 complete, M0 Spike A complete and its findings recorded
+  in §2 — several of them correct earlier assumptions, including one in the Initial Brief. **Resume at
+  M0 Spike B (§6);** GATE G0 cannot close until B3 is judged. Read §5's status block first for the
+  `just`-based dev loop, which post-dates the original text of this playbook.
 - Expected effort: one milestone ≈ one to a few focused sessions. M0 is timeboxed to ~1 day.
 
 ## 1. Decisions log
@@ -204,12 +208,30 @@ deliberately). §3's upstream receipts re-verified against the pinned checkout. 
 `android/` (package `it.slowmail.obsidianreader`, wrapper committed, Gradle 9.5.0 / AGP 9.3.2 /
 Kotlin 2.2.21 / Compose BOM 2026.02.01, daemon toolchain JDK 25, configuration cache on), with the
 M0 Spike A harness (§6) already wired as the main
-screen so the first install can exercise A2/A3/A4 immediately. **Caveat:** the cloud session could not
-run an Android build (`dl.google.com` blocked there — Kotlin sources syntax-checked with a standalone
-compiler instead), so the first `gradlew assembleDebug` on a real machine is the actual build
-verification; if a pinned androidx/AGP version fails to resolve, nudge it in
-`android/gradle/libs.versions.toml`. Remaining (machine-side): P0.2 Android Studio, P0.3 phone setup,
-P0.4 Node, then the acceptance list.
+screen so the first install can exercise A2/A3/A4 immediately.
+
+**Status (2026-08-31, machine-side): Phase 0 complete.** P0.2/P0.3/P0.4 done and the acceptance list
+verified on the Mac. The scaffold's first real `assembleDebug` passed (the 2026-08-30 caveat about the
+cloud session being unable to build is retired — no version nudging was needed). Toolchain was then
+migrated to current stable per D17: AGP 9.3.2, Gradle 9.5.0, JDK 25, Compose BOM 2026.02.01,
+configuration cache on, daemon toolchain committed at `android/gradle/gradle-daemon-jvm.properties`.
+M0 Spike A is complete (§2); **Spike B is where a fresh session resumes.**
+
+**Local dev loop — `just` at the repo root.** A `justfile` and `mise.toml` were added after this
+playbook was first written; they are the primary interface and a fresh session should prefer them over
+raw Gradle/adb invocations.
+
+```text
+mise trust && mise install    # provisions JDK 25 + Node 22 (mise refuses untrusted configs)
+just setup                    # submodule, android/local.properties, npm deps
+just doctor                   # verifies toolchain, SDK, adb, submodule, deps, attached device
+just run                      # assembleDebug + installDebug + launch on the phone
+just log                      # logcat filtered to this app's pid
+just jstest                   # jsbridge vitest suite
+just inspect                  # prints the chrome://inspect steps for WebView debugging (Layer B)
+```
+
+`ANDROID_HOME` is exported by `mise.toml`; `adb` is not assumed to be on PATH anywhere.
 
 ### Tasks
 
@@ -228,14 +250,22 @@ P0.4 Node, then the acceptance list.
 - **P0.2 — Android Studio**, current stable, on the Mac now and the Windows machine when it enters the
   picture (nothing else in this playbook differs between them beyond what §14 lists). It bundles the JDK
   and SDK manager; install the Android 16 (API 36) platform + build tools when prompted.
+  **Open `android/`, not the repo root.** Studio expects the Gradle project at the project root; opening
+  the repo root and trying to link the subfolder leaves the Gradle tool window greyed out and no run
+  configuration. The cost is that `jsbridge/` and `docs/` are not in Studio's tree — which is fine,
+  since Layer B work happens in an editor plus `chrome://inspect` (§14), not in Studio.
+  Studio is *optional*: the whole build/install/run loop is `just` (see §5 status). Keep Studio for
+  Compose Preview (`SpikeScreenPreview` in `spike/SpikeScreen.kt` is the smoke test that sync, the
+  Android facet and the Compose plugin are all wired) and the Kotlin debugger.
 - **P0.3 — Phone setup (Find N6 / ColorOS).** Settings → About device → Version → tap the build/version
   number 7× to unlock developer options (they appear under Settings → Additional settings). Enable
   **USB debugging** and **Install via USB**. ColorOS may nag about "monitoring" on each connection —
   accept once per machine. Verify with `adb devices` showing the device as `device`, not `unauthorized`.
   Windows note: if the device doesn't enumerate, install the OPPO USB driver (or the generic ADB driver
   via Windows Update) — macOS needs nothing.
-- **P0.4 — Node LTS** (≥20) on the dev machine. Only required when rebuilding `clipper-bundle.js`; the
-  committed artifact keeps Android-only checkouts fully buildable without Node.
+- **P0.4 — Node LTS** (≥20) on the dev machine — pinned in `mise.toml` (currently 22.22.2) and
+  installed by `mise install`. Only required when rebuilding `clipper-bundle.js`; the committed artifact
+  keeps Android-only checkouts fully buildable without Node.
 - **P0.5 — Submodule + deps.**
   `git submodule add https://github.com/obsidianmd/obsidian-clipper jsbridge/vendor/obsidian-clipper`,
   then pin: `git -C jsbridge/vendor/obsidian-clipper checkout 9aa509b8f2801b08d974fb59f026df6f9a12e496`.
@@ -247,10 +277,12 @@ P0.4 Node, then the acceptance list.
 
 ### Acceptance
 
-- [ ] Scaffolded app builds from CLI (`./gradlew assembleDebug` / `gradlew.bat assembleDebug`) and from
-  Android Studio, installs on the Find N6, and launches.
-- [ ] `adb devices` works; `git status` clean on a fresh clone with submodule (`git clone --recursive`).
-- [ ] `npm test` runs (trivial placeholder test) in `jsbridge/`.
+- [x] Scaffolded app builds from CLI (`just build`) and from Android Studio, installs on the Find N6,
+  and launches. *(macOS verified 2026-08-31; Windows unverified — that machine hasn't entered the
+  picture yet.)*
+- [x] `adb devices` works; `git status` clean on a fresh `git clone --recursive` with the submodule at
+  the pinned `9aa509b`. *(Both verified 2026-08-31.)*
+- [x] `npm test` runs in `jsbridge/` — 3 tests passing (`just jstest`).
 
 ## 6. M0 — De-risking spike (timeboxed ~1 day) — ends at GATE G0
 
