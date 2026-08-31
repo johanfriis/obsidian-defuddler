@@ -51,7 +51,10 @@ function compileScss(name) {
     silenceDeprecations: ['import', 'global-builtin', 'color-functions'],
     quietDeps: true,
   });
-  return result.css;
+  // `@charset` is only legal as the first thing in a stylesheet *file*; the inline-<style>
+  // fallback (see bundle-entry.ts) would make it a parse warning. Both our delivery paths
+  // declare UTF-8 by other means.
+  return result.css.replace(/^@charset\s+"[^"]*";\s*/i, '');
 }
 
 function collectAssets() {

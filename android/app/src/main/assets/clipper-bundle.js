@@ -31334,6 +31334,7 @@ ${t3.join("")}
   // shim/browser.ts
   var browser_exports = {};
   __export(browser_exports, {
+    bundledAssets: () => assets,
     default: () => browser_default,
     i18n: () => i18n,
     runtime: () => runtime,
@@ -31343,8 +31344,7 @@ ${t3.join("")}
   });
 
   // virtual:virtual:assets
-  var assets = { "reader.css": `@charset "UTF-8";
-.obsidian-reader-active[data-reader-theme=ayu] {
+  var assets = { "reader.css": `.obsidian-reader-active[data-reader-theme=ayu] {
   --background-primary: #fcfcfc;
   --background-primary-alt: #f8f9fa;
   --text-normal: #5c6166;
@@ -40944,10 +40944,20 @@ body.obsidian-highlighter-active .obsidian-highlight-overlay {
   };
 
   // src/bundle-entry.ts
+  var READER_STYLE_ID = "obsidian-reader-styles";
+  function installReaderCss() {
+    if (document.getElementById(READER_STYLE_ID)) return false;
+    const style = document.createElement("style");
+    style.id = READER_STYLE_ID;
+    style.textContent = assets["reader.css"] ?? "";
+    (document.head ?? document.documentElement).appendChild(style);
+    return true;
+  }
   function isActive() {
     return document.documentElement.classList.contains("obsidian-reader-active");
   }
-  async function toggle() {
+  async function toggle(cssMode = "link") {
+    if (cssMode === "inline") installReaderCss();
     const wasActive = isActive();
     const active = await Reader.toggle(document);
     if (!wasActive) {
@@ -40957,7 +40967,7 @@ body.obsidian-highlighter-active .obsidian-highlight-overlay {
   }
   if (!window.obsidianReaderInitialized) {
     window.obsidianReaderInitialized = true;
-    window.__clipper = { Reader, toggle, isActive, browser: browser_default };
+    window.__clipper = { Reader, toggle, isActive, installReaderCss, browser: browser_default };
     initializeI18n().catch((error) => {
       console.warn("[clipper] i18n init failed", error);
     });

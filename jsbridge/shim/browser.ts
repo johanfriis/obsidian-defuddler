@@ -196,4 +196,7 @@ const scripting = {
 const browser = { storage, runtime, i18n, tabs, scripting };
 
 export { storage, runtime, i18n, tabs, scripting };
+/** Raw embedded asset text. Not part of the polyfill surface — bundle-entry.ts uses it for the
+ *  inline-CSS delivery path, which exists because blob URLs are subject to page CSP. */
+export { assets as bundledAssets };
 export default browser;
