@@ -36,11 +36,12 @@ Bumping either pin follows the procedure in §14 — never casually.
 - A fresh implementation session should read §1 (decisions), §2 (gate outcomes), §3 (upstream ground
   truth), and the milestone it is executing. Architecture & Rationale is background reading; Problem &
   UI Reference is where every "screenshot N" reference resolves.
-- **Where things stand (2026-08-31):** Phase 0 complete, M0 Spike A complete and its findings recorded
-  in §2 — several of them correct earlier assumptions, including one carried since the original brief
-  (now Problem & UI Reference). **Resume at
-  M0 Spike B (§6);** GATE G0 cannot close until B3 is judged. Read §5's status block first for the
-  `just`-based dev loop, which post-dates the original text of this playbook.
+- **Where things stand (2026-08-31):** Phase 0 complete; M0 Spike A complete; Spike **B1 and B2 done**,
+  findings in §2 — several of them correct earlier assumptions, including one carried since the original
+  brief (now Problem & UI Reference). `clipper-bundle.js` now builds from the pinned submodule and is
+  committed. **Resume at M0 Spike B3 (§6)** — the WebView activity — which is the last thing GATE G0
+  waits on. Read §5's status block first for the `just`-based dev loop, which post-dates the original
+  text of this playbook.
 - Expected effort: one milestone ≈ one to a few focused sessions. M0 is timeboxed to ~1 day.
 
 ## 1. Decisions log
@@ -75,7 +76,7 @@ Filled in as gates are passed. Empty = not reached.
 
 | Gate | Question | Outcome | Date |
 |---|---|---|---|
-| G0 | Does `obsidian://new` + `&clipboard` work on the Find N6? What is the reliable `content=` size limit? Is the vendored reader viable in a WebView? | Spike A passed — see below. Spike B not yet run, so G0 is not closed. | A: 2026-08-31 |
+| G0 | Does `obsidian://new` + `&clipboard` work on the Find N6? What is the reliable `content=` size limit? Is the vendored reader viable in a WebView? | Spike A passed. B1/B2 done — the bundle builds and the shim strategy holds. **B3 (the WebView itself) not yet run, so G0 is not closed.** | A: 2026-08-31, B1/B2: 2026-08-31 |
 | G1 | Is reader parity good enough to build on (vs. reworking Layer B)? | — | — |
 | G2 | v1 ship review: app name + icon chosen; post-v1 order reconfirmed | — | — |
 
@@ -114,6 +115,48 @@ Filled in as gates are passed. Empty = not reached.
   D18 have been re-argued on honest grounds. **Open question, owned by nothing yet: no save mechanism
   considered so far fires Templater. If trigger-firing ever becomes a real requirement it needs a
   different mechanism entirely, not a different write path.** Johan is content without it for v1.
+
+### G0 / Spike B findings — 2026-08-31 (B1, B2 — build-machine only; B3 still to run on device)
+
+- **B1 pass. The one-alias shim strategy holds.** `webextension-polyfill` is imported from exactly one
+  place in the vendored tree (`src/utils/browser-polyfill.ts`), so aliasing that single specifier to
+  `jsbridge/shim/browser.ts` covers every `browser.*` call. Plan B from §4 (direct aliases for
+  `storage-utils`/`i18n`) is **not needed** — nothing bypasses the polyfill.
+- **B2 answered without a spike — the reader does *not* inline its own CSS.** Upstream compiles
+  `src/reader.scss` and `src/highlighter.scss` as separate webpack entries into standalone
+  `reader.css` / `highlighter.css`, ships them as web-accessible resources, and injects them at
+  runtime via `browser.runtime.getURL('reader.css')` into a `<link>` (`utils/reader.ts` ~L2098;
+  highlighter.css ~L2486). **Nothing imports them, so esbuild alone would silently miss them** and the
+  reader would render unstyled. `build.mjs` therefore compiles both with `sass` and embeds them, and
+  the shim's `runtime.getURL` hands them back as blob URLs. A test asserts the CSS is really there,
+  because the failure mode is silent.
+  - `runtime.getURL` is consequently **load-bearing from the first toggle**, not an M1.3 nicety. Same
+    for `flatten-shadow-dom.js`, which `utils/flatten-shadow-dom.ts` injects as a `<script>` on pages
+    that use shadow roots. Both are embedded in the bundle.
+- **i18n resolves through our shim, not upstream's loader — and that is fine.** Upstream `getMessage`
+  first tries `require(\`../_locales/${lang}/messages.json\`)`; esbuild resolves that template as a glob
+  and bundles *every* language. Its own `catch` falls through to `browser.i18n.getMessage`, i.e. to
+  our shim, so the shim implements substitutions and placeholders properly against the bundled
+  `en/messages.json` rather than echoing message keys.
+- **Bundle size is on the critical path for B3, not a later optimisation.** Untrimmed the bundle is
+  3.3 MB minified / 14 MB with inline sourcemaps — large enough that *how* Kotlin injects it becomes a
+  design question. Two trims in `build.mjs`, both graceful degradations, bring prod to 1.2 MB and the
+  committed debug artifact to 2.0 MB:
+  - `LOCALES = ['en']` — drops ~1 MB of other languages; `getMessage` falls back to English for
+    anything unbundled. **Open: does Johan want the reader UI in a language other than English?**
+  - `HLJS = 'highlight.js/lib/common'` — ~40 mainstream languages instead of ~190, saving ~700 KB.
+    `hljs.highlightElement` leaves an unregistered language unstyled rather than throwing.
+  - Neither is in the Decisions log yet — they are reversible one-liners awaiting Johan's confirmation.
+- **Inline sourcemaps are opt-in** (`npm run build:debug`), because they triple the artifact. The
+  committed bundle is unminified with `DEBUG_MODE` on, which reads fine in `chrome://inspect` unaided.
+- **Named ahead of B3 — page CSP is the live risk.** The reader strips the page's own stylesheets
+  (`utils/reader.ts` ~L2084) and injects its own. An extension bypasses page CSP; **a WebView
+  injection does not**, so a `style-src`-strict site could leave the reader with content stripped and
+  no styles — the worst-looking possible failure. B3 must test a strict-CSP page (github.com)
+  alongside `stephango.com/vault`. If it bites, the mitigation is stripping CSP response headers in
+  `shouldInterceptRequest`; that is an M1.2 concern, not a reason to redesign Layer B.
+- **`android/app/src/main/AndroidManifest.xml` has no `INTERNET` permission.** Spike A never needed
+  one. B3 adds it or the WebView loads nothing.
 
 ## 3. Ground truth: upstream integration points
 
@@ -192,8 +235,10 @@ android/                              Gradle project (Kotlin, Compose, minSdk 31
     java/…/settings/                  vault name, prefs, template store
     assets/clipper-bundle.js          built artifact, committed
 jsbridge/
-  package.json, build.mjs             esbuild via Node API (node build.mjs — cross-platform)
+  package.json, build.mjs             esbuild + sass via Node API (node build.mjs — cross-platform)
   shim/browser.ts                     the webextension-polyfill replacement
+  src/bundle-entry.ts                 bundle entry — exposes window.__clipper
+  src/vendor-globals.d.ts             ambients the vendored tree expects (chrome, the polyfill module)
   test/fixtures/*.html                saved pages + expected clip output
   test/*.test.ts                      vitest + linkedom
   vendor/obsidian-clipper/            git submodule @ pin
@@ -234,6 +279,8 @@ just doctor                   # verifies toolchain, SDK, adb, submodule, deps, a
 just run                      # assembleDebug + installDebug + launch on the phone
 just log                      # logcat filtered to this app's pid
 just jstest                   # jsbridge vitest suite
+just jsbuild                  # rebuild android/.../assets/clipper-bundle.js from the submodule
+just jsverify                 # prove the committed bundle matches its sources (§14)
 just inspect                  # prints the chrome://inspect steps for WebView debugging (Layer B)
 ```
 
@@ -322,18 +369,28 @@ whole design stands on.
 
 ### Spike B — the reader, in a bare WebView
 
-- **B1.** First rough cut of `jsbridge/build.mjs`: esbuild via Node API, entry = a tiny
-  `bundle-entry.ts` that imports `Reader` from the submodule and exposes
-  `window.__clipper = { Reader }`; `format: 'iife'`; alias `webextension-polyfill` → a shim of
-  hardcoded stubs (storage returns `{}`, `getMessage` returns the key, runtime messaging is a no-op).
-  Bundle defuddle and dayjs in (no externals).
-- **B2.** Determine how reader styles are delivered (does `Reader` inject its own `<style>`, or does the
-  extension ship CSS separately?) and replicate: either import compiled SCSS as text into the bundle or
-  load a `clipper.css` asset alongside. Record the answer in §2.
+- **B1.** ~~First rough cut of `jsbridge/build.mjs` … alias `webextension-polyfill` → a shim of
+  hardcoded stubs.~~ **Done 2026-08-31 — see §2.** Went further than "hardcoded stubs" in two places
+  because B2 made them load-bearing rather than optional: `runtime.getURL` is backed by a real asset
+  map, and `i18n.getMessage` by the bundled `en/messages.json`. Both are already in their M1.3 shape;
+  what remains stubbed for M1.3 is `storage` (in-memory, needs SharedPreferences) and `runtime`
+  messaging (a local event bus, needs the Kotlin `AndroidBridge`). `window.__clipper` exposes
+  `{ Reader, toggle, isActive, browser }` — `browser` is the shim itself, so B3 can poke storage and
+  asset resolution from `chrome://inspect`.
+- **B2.** ~~Determine how reader styles are delivered and replicate.~~ **Answered 2026-08-31 by reading
+  upstream, no spike needed — see §2.** CSS ships separately (`reader.css` / `highlighter.css`) and is
+  injected at runtime through `runtime.getURL`; `build.mjs` compiles both with `sass` and embeds them.
 - **B3.** Scratch activity with a WebView (JS + DOM storage on, remote debugging on): load
-  `https://stephango.com/vault`, run the bundle, call `__clipper.Reader.toggle(document)`. Confirm
-  screenshot 1's toolbar renders and scrolling/TOC work. Inspect via `chrome://inspect` on the dev
-  machine.
+  `https://stephango.com/vault`, run the bundle, call `__clipper.toggle()`. Confirm screenshot 1's
+  toolbar renders and scrolling/TOC work. Inspect via `chrome://inspect` on the dev machine.
+  Three things B1/B2 put on this spike's list (all §2):
+  1. Add `INTERNET` to the manifest first — it isn't there.
+  2. Test a **strict-CSP page (github.com)** alongside stephango.com. The reader strips the page's
+     stylesheets and injects its own through a blob URL, which page CSP can block where an extension
+     would not. Mitigation if it bites: strip CSP response headers in `shouldInterceptRequest`.
+  3. Decide how Kotlin injects a ~2 MB bundle — `evaluateJavascript` with the whole source, or a
+     `<script src>` served by `WebViewAssetLoader` (which has the same CSP exposure as (2)).
+     Keep the Spike A harness reachable; M2's acceptance list still references it.
 - **B4.** Same page through `defuddle` full bundle: eyeball markdown + metadata quality on 2–3 real
   pages (one news article, one YouTube page, one GitHub README).
 

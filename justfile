@@ -108,6 +108,26 @@ jstest:
 jsdeps:
     npm install
 
+# Rebuild android/app/src/main/assets/clipper-bundle.js from the vendored submodule.
+[working-directory('jsbridge')]
+jsbuild:
+    npm run build
+
+# Rebuild with inline sourcemaps for chrome://inspect work (~3x larger, not committed).
+[working-directory('jsbridge')]
+jsbuild-debug:
+    npm run build:debug
+
+# Typecheck the jsbridge TypeScript.
+[working-directory('jsbridge')]
+jscheck:
+    npm run typecheck
+
+# Prove the committed bundle matches its sources (playbook §14).
+[working-directory('jsbridge')]
+jsverify:
+    npm run verify
+
 # --- device ------------------------------------------------------------
 
 # List connected devices.

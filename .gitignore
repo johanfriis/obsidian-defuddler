@@ -23,3 +23,6 @@ android/.kotlin/
 # Env / secrets
 .env
 .env.*
+
+# jsbridge build byproducts (the bundle itself IS committed — see playbook §14)
+jsbridge/build-meta.json
