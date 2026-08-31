@@ -413,7 +413,22 @@ whole design stands on.
 | A1/A2 pass | Clipboard-first stays the primary save path (D2 confirmed). |
 | Clipboard path fails | Primary becomes `content=`; revisit D2. |
 | B3 renders usable reader | Layer B proceeds as designed → M1. |
-| B3 unusable/broken | Stop. Options: deeper shimming, or a native-lite reader (defuddle output in our own template) — decide before any M1 work. |
+| B3 unusable/broken | Stop. Options, best first: (1) **upstream's own standalone reader page** — see below; (2) deeper shimming; (3) a native-lite reader (defuddle output in our own template). Decide before any M1 work. |
+
+**Upstream ships two reader paths, not one** (found 2026-08-31 while comparing our WebView against the
+extension's privileges). Besides toggling on the live page — what B3 tests — `src/reader.html` +
+`src/core/reader-view.ts` render at *the extension's own origin*: fetch the target URL, `DOMParser` it
+into a detached document, run Defuddle on that, set `Reader.preExtractedContent`, render. `reader.css`
+loads there as a plain same-origin `<link>`.
+
+Why this matters for us: **the page-CSP risk is a property of the live-page path only.** A
+`WebViewAssetLoader` page of our own has no third-party CSP to fight, and the reader's stylesheet
+stops needing a blob URL. What it costs is a fetcher — the extension routes through its background
+worker (`proxyFetch` → `fetchProxy`, backed by `<all_urls>`) because an extension page has no CORS
+exemption either; ours would be Kotlin using `CookieManager`'s cookies. It also gives up
+browse-then-toggle, which M6.1's login flow wants regardless. Not a reason to change course now — B3
+tests the live-page path as planned — but it is the first fallback if CSP bites, ahead of any
+hand-written reader.
 
 ## 7. M1 — Share → Reader (v1)
 
