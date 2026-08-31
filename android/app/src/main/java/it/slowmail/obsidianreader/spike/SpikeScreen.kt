@@ -25,6 +25,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 
@@ -265,5 +267,20 @@ fun SpikeScreen() {
             ) { Text("Copy last URI") }
         }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/**
+ * Smoke test for the Android Studio setup: if the Compose Preview panel renders
+ * this, Gradle sync, the Android facet and the Compose plugin are all wired up.
+ * The buttons do nothing useful in the preview - they need a real device.
+ */
+@Preview(showBackground = true, heightDp = 900)
+@Composable
+private fun SpikeScreenPreview() {
+    MaterialTheme {
+        Surface {
+            SpikeScreen()
+        }
     }
 }

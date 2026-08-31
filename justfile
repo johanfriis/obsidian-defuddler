@@ -21,6 +21,28 @@ setup: submodules
 submodules:
     git submodule update --init --recursive
 
+# Check that the toolchain and SDK are wired up correctly.
+doctor:
+    #!/usr/bin/env bash
+    ok() { printf '  ok    %s\n' "$1"; }
+    bad() { printf '  FAIL  %s\n' "$1"; fail=1; }
+    fail=0
+    echo "toolchain"
+    command -v java >/dev/null && ok "java $(java -version 2>&1 | head -1 | sed 's/.*version //;s/"//g')" || bad "java not found"
+    command -v node >/dev/null && ok "node $(node --version)" || bad "node not found"
+    echo "android sdk"
+    [ -d "{{ android_home }}" ] && ok "sdk at {{ android_home }}" || bad "no sdk at {{ android_home }}"
+    [ -x "{{ adb }}" ] && ok "adb $({{ adb }} --version | head -1 | sed 's/.*version //')" || bad "adb missing"
+    [ -f android/local.properties ] && ok "android/local.properties" || bad "android/local.properties missing (run 'just setup')"
+    echo "sources"
+    [ -f jsbridge/vendor/obsidian-clipper/package.json ] && ok "submodule checked out" || bad "submodule empty (run 'just submodules')"
+    [ -d jsbridge/node_modules ] && ok "jsbridge deps installed" || bad "jsbridge deps missing (run 'just jsdeps')"
+    echo "device"
+    n=$({{ adb }} devices | tail -n +2 | grep -c "device$" || true)
+    [ "$n" -gt 0 ] && ok "$n device(s) attached" || echo "  --    no device attached (fine unless installing)"
+    echo
+    [ "$fail" -eq 0 ] && echo "all good — try 'just build'" || { echo "see failures above"; exit 1; }
+
 # --- android -----------------------------------------------------------
 
 # Assemble the debug APK.
