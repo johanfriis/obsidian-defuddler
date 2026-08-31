@@ -2,6 +2,7 @@ package it.slowmail.obsidianreader.spike
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -161,6 +162,9 @@ private fun SpikeBScreen() {
 
     fun say(line: String) {
         log.add(line)
+        // The on-screen pane ellipsizes; logcat is where the full probe JSON is readable.
+        // `just log`, or: adb logcat -s SpikeB
+        Log.d("SpikeB", line)
     }
 
     // Read once: this is the ~2 MB artifact and re-reading it per page load would muddy the

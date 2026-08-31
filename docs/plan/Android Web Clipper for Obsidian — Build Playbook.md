@@ -36,12 +36,12 @@ Bumping either pin follows the procedure in §14 — never casually.
 - A fresh implementation session should read §1 (decisions), §2 (gate outcomes), §3 (upstream ground
   truth), and the milestone it is executing. Architecture & Rationale is background reading; Problem &
   UI Reference is where every "screenshot N" reference resolves.
-- **Where things stand (2026-08-31):** Phase 0 complete; M0 Spike A complete; Spike **B1 and B2 done**,
+- **Where things stand (2026-08-31):** Phase 0 complete; **M0 Spike A and Spike B both complete**,
   findings in §2 — several of them correct earlier assumptions, including one carried since the original
-  brief (now Problem & UI Reference). `clipper-bundle.js` now builds from the pinned submodule and is
-  committed. **Resume at M0 Spike B3 (§6)** — the WebView activity — which is the last thing GATE G0
-  waits on. Read §5's status block first for the `just`-based dev loop, which post-dates the original
-  text of this playbook.
+  brief (now Problem & UI Reference). The reader renders on the Find N6 on all four test pages.
+  **GATE G0 is ready for Johan's judgement** (§6) — the technical questions are answered; two of the
+  answers carry trade-offs he should sign off before M1. Read §5's status block first for the
+  `just`-based dev loop, which post-dates the original text of this playbook.
 - Expected effort: one milestone ≈ one to a few focused sessions. M0 is timeboxed to ~1 day.
 
 ## 1. Decisions log
@@ -77,7 +77,7 @@ Filled in as gates are passed. Empty = not reached.
 
 | Gate | Question | Outcome | Date |
 |---|---|---|---|
-| G0 | Does `obsidian://new` + `&clipboard` work on the Find N6? What is the reliable `content=` size limit? Is the vendored reader viable in a WebView? | Spike A passed. B1/B2 done — the bundle builds and the shim strategy holds. **B3 (the WebView itself) not yet run, so G0 is not closed.** | A: 2026-08-31, B1/B2: 2026-08-31 |
+| G0 | Does `obsidian://new` + `&clipboard` work on the Find N6? What is the reliable `content=` size limit? Is the vendored reader viable in a WebView? | **Spikes A and B both pass.** The reader renders on all four test pages. Two findings need Johan's sign-off before G0 closes — see "open at G0" below. | A: 2026-08-31, B: 2026-08-31 |
 | G1 | Is reader parity good enough to build on (vs. reworking Layer B)? | — | — |
 | G2 | v1 ship review: app name + icon chosen; post-v1 order reconfirmed | — | — |
 
@@ -169,6 +169,64 @@ Filled in as gates are passed. Empty = not reached.
   `shouldInterceptRequest`; that is an M1.2 concern, not a reason to redesign Layer B.
 - **`android/app/src/main/AndroidManifest.xml` has no `INTERNET` permission.** Spike A never needed
   one. B3 adds it or the WebView loads nothing.
+
+### G0 / Spike B3 findings — 2026-08-31, Find N6 (CPH2765), cover display, Android 16
+
+Harness: `spike/SpikeBActivity.kt` (throwaway). It mirrors its log to logcat (`just log`, or
+`adb logcat -s SpikeB`), which is where the full probe JSON is readable — the on-screen pane
+ellipsizes.
+
+- **B3 pass. The reader renders in a bare WebView**, on stephango.com, github.com, apnews.com and a
+  YouTube watch page. Screenshot 1's toolbar is present and correct (TOC, pen, paperclip, Aa, and the
+  Obsidian gem that M1.5 must replace). Layer B proceeds as designed.
+- **`evaluateJavascript` handles the ~2 MB bundle comfortably** — 42–222 ms per injection across all
+  pages, no failures. **The injection question is closed: no `WebViewAssetLoader`, no chunking, no
+  externals.** Reading the asset off disk is ~20–40 ms, done once. This also means the *JavaScript* is
+  entirely out of CSP's reach, since `evaluateJavascript` is neither a script element nor a
+  page-initiated `eval` — only the reader's own injected sub-resources are policed.
+- **Page CSP blocks the reader's stylesheet, exactly as predicted.** On github.com
+  (`style-src 'unsafe-inline' github.githubassets.com`, no `blob:`) the console shows *"Loading the
+  stylesheet 'blob:…' violates …"*, and the probe reports `htmlBg: rgba(0, 0, 0, 0)` — the page's own
+  styles stripped and nothing to replace them. On stephango/apnews (no CSP) the same path gives
+  `htmlBg: rgb(255, 255, 255)` and `reader.css rules=331`.
+- **The inline-CSS path fixes it, with no patching of upstream.** `toggle('inline')` pre-installs
+  reader.css as `<style id="obsidian-reader-styles">`; upstream's strip pass preserves that id and its
+  own `<link>` is only created when no such element exists, so it skips the blob path by itself. On
+  github the probe then reports `readerStyleTag: STYLE(63384)`, `htmlBg: rgb(255, 255, 255)` and
+  `<inline> rules=331` — an identical rule count to the blob path elsewhere. **Recommendation: make
+  `inline` the default in M1** rather than a fallback; it costs nothing on pages without CSP.
+- **Trusted Types — a second CSP-family blocker, not previously on the radar.** YouTube sends
+  `require-trusted-types-for 'script'`. Without a policy the reader dies outright: *"Defuddle Error in
+  async extraction: Failed to set the 'innerHTML' property"* and *"Reader Error during apply: Failed
+  to execute 'parseFromString' on 'DOMParser'"*, with `toolbar: false` — nothing renders. An extension
+  never meets this because its content script runs in an isolated world that Trusted Types does not
+  police; our main-world injection is policed. `installTrustedTypesPolicy()` (bundle-entry.ts) creates
+  a pass-through `default` policy, which YouTube permits because it sends no `trusted-types` directive
+  naming allowed policies. With it, YouTube renders fully — title, author, date, player.
+- **Still blocked on github, both harmless-ish, both M1/M4 follow-ups:**
+  - `highlighter.css` is still delivered as a blob `<link>` and still refused. M4 needs the same inline
+    treatment where upstream calls `ensureHighlighterCSS`.
+  - `flatten-shadow-dom.js` is refused by `script-src`. Upstream's `script.onerror` resolves the
+    promise, so it degrades rather than hangs — but shadow-DOM pages will not be flattened, which may
+    cost extraction quality. Worth a look in B4/M1.7 fixtures.
+- **`YoutubeExtractor: failed to parse inline JSON`** on `m.youtube.com`. The reader renders, but
+  defuddle's YouTube extractor did not get the player JSON, so the transcript may not populate —
+  and M1's acceptance list requires it. **Owned by B4/M1**, not a B3 blocker.
+- **SPA reloads fire `onPageFinished` repeatedly** — github fired it four times for one navigation.
+  The bundle's `obsidianReaderInitialized` guard held every time (each re-injection returned
+  `"object"` and did not replace the surface). M1.6's re-extract action still needs to exist, but
+  re-injection itself is safe.
+
+**Open at G0 — needs Johan, not Claude:**
+
+1. **Make the Trusted Types default policy permanent?** It is what makes YouTube work at all. The
+   trade is real: a pass-through default policy switches off the page's own XSS guard for the life of
+   that document. The counter-argument is that this WebView exists to render a page Johan chose into
+   our reader, and we already inject a bundle that rewrites the whole DOM. If accepted this becomes a
+   D-entry; if not, YouTube (and any other Trusted Types site) is out of scope for the reader.
+2. **Is `inline` the right default for reader CSS?** Recommended above. The alternative — leaving
+   `link` as default and falling back on failure — means detecting the CSP refusal, which is harder
+   than simply always inlining.
 
 ## 3. Ground truth: upstream integration points
 
@@ -392,7 +450,7 @@ whole design stands on.
 - **B2.** ~~Determine how reader styles are delivered and replicate.~~ **Answered 2026-08-31 by reading
   upstream, no spike needed — see §2.** CSS ships separately (`reader.css` / `highlighter.css`) and is
   injected at runtime through `runtime.getURL`; `build.mjs` compiles both with `sass` and embeds them.
-- **B3.** Scratch activity with a WebView (JS + DOM storage on, remote debugging on): load
+- **B3.** ~~Scratch activity with a WebView.~~ **Done 2026-08-31 — pass, see §2.** Original text: load
   `https://stephango.com/vault`, run the bundle, call `__clipper.toggle()`. Confirm screenshot 1's
   toolbar renders and scrolling/TOC work. Inspect via `chrome://inspect` on the dev machine.
   Three things B1/B2 put on this spike's list (all §2):
@@ -404,7 +462,10 @@ whole design stands on.
      `<script src>` served by `WebViewAssetLoader` (which has the same CSP exposure as (2)).
      Keep the Spike A harness reachable; M2's acceptance list still references it.
 - **B4.** Same page through `defuddle` full bundle: eyeball markdown + metadata quality on 2–3 real
-  pages (one news article, one YouTube page, one GitHub README).
+  pages (one news article, one YouTube page, one GitHub README). Two B3 findings feed straight in:
+  the YouTube extractor's inline-JSON parse failure, and whether unflattened shadow DOM costs
+  extraction quality on github. Cheapest run in Node against saved fixtures, where the output becomes
+  M1.7's harness instead of being thrown away.
 
 ### GATE G0 — decide with Johan
 

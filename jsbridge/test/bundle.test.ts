@@ -172,6 +172,22 @@ describe('clipper-bundle', () => {
     expect(run('document.querySelectorAll("#obsidian-reader-styles").length')).toBe(1);
   });
 
+  it('installs a Trusted Types default policy where the page enforces them', () => {
+    // YouTube sends `require-trusted-types-for 'script'`, which otherwise breaks Defuddle's
+    // innerHTML writes and Reader.apply's DOMParser call. linkedom has no trustedTypes, so the
+    // unsupported branch is what runs here; the created/refused branches are exercised on device.
+    expect(run('window.__clipper.installTrustedTypesPolicy()')).toBe('unsupported');
+    run(`window.__tt = { calls: [], defaultPolicy: null,
+           createPolicy: function (n, p) { this.calls.push(n); this.defaultPolicy = p; return p; } };
+         window.trustedTypes = window.__tt;`);
+    expect(run('window.__clipper.installTrustedTypesPolicy()')).toBe('installed');
+    expect(run('window.__tt.calls[0]')).toBe('default');
+    expect(run('window.__tt.defaultPolicy.createHTML("<b>x</b>")')).toBe('<b>x</b>');
+    // Never stacks a second policy over one already in place.
+    expect(run('window.__clipper.installTrustedTypesPolicy()')).toBe('already-present');
+    run('delete window.trustedTypes');
+  });
+
   it('resolves real English strings rather than message keys', () => {
     // getMessage labels every button in the reader toolbar (screenshot 1).
     const expected = messagesFor('en').readerSettings.message;

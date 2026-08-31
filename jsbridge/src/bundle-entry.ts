@@ -22,6 +22,7 @@ interface ClipperBundle {
   toggle: (cssMode?: CssMode) => Promise<boolean>;
   isActive: () => boolean;
   installReaderCss: () => boolean;
+  installTrustedTypesPolicy: () => string;
   /** The shim standing in for webextension-polyfill. Exposed so B3 can inspect storage and
    *  asset resolution from chrome://inspect, and so tests can exercise runtime.getURL. */
   browser: typeof browser;
@@ -54,12 +55,50 @@ function installReaderCss(): boolean {
   return true;
 }
 
+/**
+ * Installs a pass-through Trusted Types default policy so the reader can write HTML.
+ *
+ * Pages sending `require-trusted-types-for 'script'` (YouTube does) reject plain strings passed
+ * to innerHTML, DOMParser.parseFromString and script src. That stops the reader dead: Defuddle
+ * fails extraction and `Reader.apply` throws. A browser extension never meets this because its
+ * content script runs in an isolated world, which Trusted Types does not police; our
+ * main-world injection is policed.
+ *
+ * A default policy is only creatable when the page has no `trusted-types` directive naming
+ * allowed policies — YouTube sends none, so this succeeds there. Where it is refused we log and
+ * carry on: the reader will fail on that page, which is honest and visible.
+ *
+ * The trade, stated plainly: a pass-through default policy switches off the page's own XSS
+ * guard for the life of that document. Acceptable here because this WebView exists to render a
+ * page the user chose into our reader, and we are already injecting a bundle that rewrites the
+ * whole DOM — but it is a real reduction in the page's defences, not a free win.
+ *
+ * Returns a short status for the spike log and tests.
+ */
+function installTrustedTypesPolicy(): string {
+  const tt = (window as unknown as { trustedTypes?: any }).trustedTypes;
+  if (!tt || typeof tt.createPolicy !== 'function') return 'unsupported';
+  if (tt.defaultPolicy) return 'already-present';
+  try {
+    tt.createPolicy('default', {
+      createHTML: (input: string) => input,
+      createScript: (input: string) => input,
+      createScriptURL: (input: string) => input,
+    });
+    return 'installed';
+  } catch (error) {
+    console.warn('[clipper] Trusted Types default policy refused', error);
+    return 'refused';
+  }
+}
+
 /** Mirrors reader-script.ts: it tracks reader state with a class on documentElement. */
 function isActive(): boolean {
   return document.documentElement.classList.contains('obsidian-reader-active');
 }
 
 async function toggle(cssMode: CssMode = 'link'): Promise<boolean> {
+  installTrustedTypesPolicy();
   if (cssMode === 'inline') installReaderCss();
   // Toggling off restores the page via reload, so read state before calling.
   const wasActive = isActive();
@@ -73,7 +112,7 @@ async function toggle(cssMode: CssMode = 'link'): Promise<boolean> {
 // Idempotent: Kotlin re-injects on every onPageFinished, and SPA navigation can fire it twice.
 if (!window.obsidianReaderInitialized) {
   window.obsidianReaderInitialized = true;
-  window.__clipper = { Reader, toggle, isActive, installReaderCss, browser };
+  window.__clipper = { Reader, toggle, isActive, installReaderCss, installTrustedTypesPolicy, browser };
   // Sets the dayjs locale and resolves the UI language; failure is not fatal, getMessage
   // falls back to English.
   initializeI18n().catch((error: unknown) => {

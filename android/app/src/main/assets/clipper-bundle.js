@@ -40953,10 +40953,27 @@ body.obsidian-highlighter-active .obsidian-highlight-overlay {
     (document.head ?? document.documentElement).appendChild(style);
     return true;
   }
+  function installTrustedTypesPolicy() {
+    const tt = window.trustedTypes;
+    if (!tt || typeof tt.createPolicy !== "function") return "unsupported";
+    if (tt.defaultPolicy) return "already-present";
+    try {
+      tt.createPolicy("default", {
+        createHTML: (input) => input,
+        createScript: (input) => input,
+        createScriptURL: (input) => input
+      });
+      return "installed";
+    } catch (error) {
+      console.warn("[clipper] Trusted Types default policy refused", error);
+      return "refused";
+    }
+  }
   function isActive() {
     return document.documentElement.classList.contains("obsidian-reader-active");
   }
   async function toggle(cssMode = "link") {
+    installTrustedTypesPolicy();
     if (cssMode === "inline") installReaderCss();
     const wasActive = isActive();
     const active = await Reader.toggle(document);
@@ -40967,7 +40984,7 @@ body.obsidian-highlighter-active .obsidian-highlight-overlay {
   }
   if (!window.obsidianReaderInitialized) {
     window.obsidianReaderInitialized = true;
-    window.__clipper = { Reader, toggle, isActive, installReaderCss, browser: browser_default };
+    window.__clipper = { Reader, toggle, isActive, installReaderCss, installTrustedTypesPolicy, browser: browser_default };
     initializeI18n().catch((error) => {
       console.warn("[clipper] i18n init failed", error);
     });
