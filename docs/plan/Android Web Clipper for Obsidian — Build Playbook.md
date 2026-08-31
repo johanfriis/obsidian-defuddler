@@ -41,7 +41,7 @@ everything else was decided by Johan explicitly.
 | # | Decision | Rationale |
 |---|---|---|
 | D1 | Dedicated Android app, not a browser extension | Mobile browsers relay `obsidian://` unreliably; a first-class app fires the intent itself (Brief). |
-| D2 | Save via `obsidian://new`, clipboard-first, with `content=` as the only fallback. No SAF write path. On failure, tell Johan — never save by another route | Lets Obsidian run its usual import triggers (Brief). A SAF write bypasses those triggers, so a silent SAF fallback produces a note that looks saved but skipped Templater et al. A visible failure beats a silent divergence. Revised at G0 (2026-08-31). |
+| D2 | Save via `obsidian://new`, clipboard-first, with `content=` as the only fallback. No SAF write path. On failure, tell Johan — never save by another route | **Rationale corrected at G0/A5 (2026-08-31).** The Brief's premise — that the URI lets Obsidian run its usual import triggers — is measurably false: Templater's on-create trigger does *not* fire for notes created via `obsidian://new`. The decision stands on what survives: no tree-URI plumbing to build or harden, Obsidian implements dedup/append/overwrite for us, and the note enters Obsidian's index immediately. Failure is reported rather than rerouted, because a save that silently takes a different path is worse than a visible error. |
 | D3 | Three-layer architecture: upstream clip engine (dependency) + vendored reader/highlighter + native Kotlin/Compose shell | See Implementation Plan §Architecture. |
 | D4 | Reader (M1) before clip/save (M2) | Johan's call, 2026-08-30. The reading experience is part of the daily driver, not polish. |
 | D5 | v1 = M0 + M1 + M2 + M3 (templates incl. import and URL auto-selection). Post-v1 order: highlighter → reader style settings → in-app login/polish | Johan's call, 2026-08-30. |
@@ -56,7 +56,7 @@ everything else was decided by Johan explicitly.
 | D14 | Extraction regression harness starts in M1 *(default)* | Every submodule bump is guarded from the beginning. |
 | D15 | Project license MIT; `THIRD_PARTY_LICENSES` shipped in APK; no Obsidian trademarks in shipped branding | See §17. |
 | D16 | Templates are authored/edited in the desktop clipper and imported here as JSON *(default)* | v1 imports and selects templates; it does not include a template editor. |
-| D18 | `SafWriter` (M2.4) and SAF hardening (M6.3) deferred, not deleted | Follows from the D2 revision: with no SAF save path there is nothing to write or harden. Kept in the plan with rationale so the analysis survives if the `content=` ceiling ever becomes a real annoyance. Accepted trade: SAF was also the hedge against Obsidian changing `obsidian://`, so that contract is now a single point of failure — acceptable because notes are plain markdown in a folder Johan controls, making recovery manual but never data-loss. |
+| D18 | `SafWriter` (M2.4) and SAF hardening (M6.3) deferred, not deleted | Follows from D2: with no SAF save path there is nothing to write or harden. **The original justification (SAF bypasses Obsidian's triggers) turned out not to separate the two options — A5 showed `obsidian://` bypasses them too.** What the deferral now rests on is cost: `SafWriter` reimplements append/overwrite that Obsidian gives us free, plus tree-URI permission plumbing to build and harden. Two accepted trades: (1) `obsidian://` always foregrounds Obsidian (A4) — SAF would have allowed a true background save; (2) the URI contract is now a single point of failure — acceptable because notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss. |
 | D17 | Track the current stable toolchain (AGP/Gradle/JDK) rather than pinning to an older one or shimming | Standard tools at their sanctioned versions beat local workarounds; migrations are cheapest taken early. Toolchain versions live in `android/gradle/libs.versions.toml`, `android/gradle/wrapper`, `android/gradle/gradle-daemon-jvm.properties` and `mise.toml`. |
 
 ## 2. Gate outcomes
@@ -91,7 +91,19 @@ Filled in as gates are passed. Empty = not reached.
   saved instance state** in `ReaderActivity`/`SavePipeline`, at any size.
 - **Only `md.obsidian` claims the `obsidian://` scheme** on this device, so there is no chooser dialog
   to defeat the silent path.
-- **Still open:** A4 (behaviour flags) and A5 (vault automations) not yet run.
+- **A4 pass, all four behaviours.** Default de-duplicates (`note 1.md` beside `note.md`);
+  `overwrite=true` replaces in place; `append=true` extends the existing note; `silent=true` creates the
+  note without navigating to it. **`silent` does not mean "without foregrounding Obsidian"** — it
+  suppresses opening the new note, nothing more.
+- **Any `obsidian://` save foregrounds Obsidian.** There is no variant of this path that saves in the
+  background. Accepted by Johan; recorded so M2 does not rediscover it.
+- **A5 — the Brief's central premise is false.** Templater's on-create trigger does **not** fire for
+  notes created via `obsidian://new`. The Brief preferred the URI over a direct vault write precisely
+  because it was assumed to "let Obsidian run its usual import triggers"; it does not. This does not
+  favour SAF either — a SAF write bypasses them equally — so it is not a reason to switch, but D2 and
+  D18 have been re-argued on honest grounds. **Open question, owned by nothing yet: no save mechanism
+  considered so far fires Templater. If trigger-firing ever becomes a real requirement it needs a
+  different mechanism entirely, not a different write path.** Johan is content without it for v1.
 
 ## 3. Ground truth: upstream integration points
 
@@ -263,10 +275,12 @@ whole design stands on.
   No practical ceiling: clean up to 512 KB, loud catchable failure at 1024 KB. The ~500 KB figure in the
   original plan was wrong — it is the limit for Intent *extras*, whereas this payload rides in the data
   URI. Outcome: no threshold constant; `SavePipeline` tries and catches.
-- **A4.** Verify `&append=true`, `&overwrite=true`, and `&silent=true` behave as documented against an
-  existing note.
-- **A5.** Confirm whatever vault automations Johan relies on (e.g. Templater folder templates) fire the
-  same way they do for desktop-clipper notes.
+- **A4.** ~~Verify `&append=true`, `&overwrite=true`, and `&silent=true` behave as documented.~~
+  **Done 2026-08-31 — pass, see §2.** Note `silent` suppresses *opening* the new note; it does not stop
+  Obsidian being foregrounded.
+- **A5.** ~~Confirm whatever vault automations Johan relies on fire the same way they do for
+  desktop-clipper notes.~~ **Done 2026-08-31 — they do not.** Templater's on-create trigger does not
+  fire for `obsidian://new` notes. See §2; D2/D18 re-argued as a result.
 
 ### Spike B — the reader, in a bare WebView
 

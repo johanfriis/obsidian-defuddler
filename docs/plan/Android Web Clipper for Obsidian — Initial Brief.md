@@ -17,7 +17,7 @@ Every browser-extension-based approach on Android depends on the browser correct
 
 ## Decision
 
-Build a small, dedicated Android app that replicates what the Obsidian Web Clipper does, potentially **writing directly to the vault folder instead of relying on the **`obsidian://`** handoff.** If possible, using the URI would be ideal, as that let’s Obsidian run it’s usual import triggers.
+Build a small, dedicated Android app that replicates what the Obsidian Web Clipper does, potentially **writing directly to the vault folder instead of relying on the **`obsidian://`** handoff.** If possible, using the URI would be ideal, as that let’s Obsidian run it’s usual import triggers. *[Correction, 2026-08-31: measured false at G0/A5 — Templater's on-create trigger does not fire for `obsidian://new` notes. The URI path was kept anyway, on different grounds; see Build Playbook D2/D18.]*
 
 ### Proposed shape
 

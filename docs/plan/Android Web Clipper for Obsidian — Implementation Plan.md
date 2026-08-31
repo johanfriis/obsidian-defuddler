@@ -58,7 +58,7 @@ Share sheet (text/plain URL)
 4. `startActivity(Intent(ACTION_VIEW, uri))`.
 5. **Fallback:** `content=` in the URI (legacy mode) when clipboard mode is off or failed. No SAF write path and no size threshold — see Build Playbook D2/D18 and the G0 Spike A findings. If `content=` also fails, report the failure to Johan rather than saving by another route.
 
-Johan's vault is on device storage, so a SAF fallback would be *possible* — but it is deliberately not used: a SAF write bypasses Obsidian's new-file triggers (Templater et al.), so a note would look saved while silently skipping the automations that make it useful. Deferred, not deleted (Build Playbook D18).
+Johan's vault is on device storage, so a SAF fallback would be *possible* — but it is deliberately not used. Note that the original argument for this (SAF bypasses Obsidian's new-file triggers) does **not** hold: G0/A5 measured that `obsidian://new` bypasses Templater's on-create trigger too, so neither path fires it. The deferral rests on cost instead — `SafWriter` would reimplement append/overwrite that Obsidian gives us free, plus tree-URI permission plumbing to build and harden. Deferred, not deleted (Build Playbook D2/D18).
 
 ### In-app login (per Johan's answer)
 
