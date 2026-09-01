@@ -43,6 +43,11 @@ interface ClipperBundle {
   sweepBranding: (doc: Document) => number;
   /** Marks the toolbar buttons whose milestones have not landed; returns how many (M1.6). */
   hideUnbuiltControls: (doc: Document) => number;
+  /** Flips the highlighter and reports where it landed. Kotlin's route to the same local call the
+   *  reader toolbar's pen makes, so the two cannot disagree (M2.7). */
+  toggleHighlighter: () => boolean;
+  /** Whether the highlighter is on, read from the body class that is the only real answer. */
+  highlighterActive: () => boolean;
   /** Entry point for events sent down from Kotlin via evaluateJavascript (M1.3). */
   receive: (json: string) => void;
   /** Whether storage and messaging are really reaching Kotlin, or falling back to in-memory.
@@ -187,7 +192,9 @@ function sweepBranding(doc: Document): number {
  * upstream gives them, read back through the *same* `getMessage` that rendered it. That tracks
  * upstream's own strings instead of hardcoding "Highlighter", and it is why this cannot be pure
  * CSS. Each milestone un-ships one line:
- *   - `highlighter` — the pen. M4.
+ * The list is empty as of M2.7: `addToObsidian` left at M2.6, and `highlighter` left once the pen
+ * turned out to need nothing routed — `Reader.toggleHighlighter` is entirely local to this document
+ * (`utils/reader.ts` ~L2490), and highlighter.css is installed inline at load.
  * `addToObsidian` left this list at M2.6: both the paperclip and the gem carry that label, and the
  * gem's `toggleIframe` is now routed to our clip sheet, so it works. That button is *the* one-tap
  * clip from inside the reader, which is what let the shell bar go (D33).
@@ -197,7 +204,7 @@ function sweepBranding(doc: Document): number {
  * The TOC and `Aa` are left alone: both are upstream features that already work here, and `Aa` now
  * persists its settings through the bridge (M1.3).
  */
-const UNBUILT_LABEL_KEYS = ['highlighter'];
+const UNBUILT_LABEL_KEYS: string[] = [];
 
 const UNBUILT_CONTROLS_CSS = `
 [data-clipper-unbuilt] { display: none !important; }
@@ -278,6 +285,25 @@ function readerRendered(): boolean {
   return !!document.querySelector('.obsidian-reader-container');
 }
 
+/**
+ * The highlighter, as the *page* sees it (M2.7).
+ *
+ * `Reader.toggleHighlighter` needs no background and no routing — it flips a body class and wires
+ * the selection handlers, all in this document. That body class is therefore the only real answer
+ * to "is the highlighter on", which is why both pens go through here: the reader toolbar's calls it
+ * directly, and the clip sheet's reaches it through Kotlin. Two toggles, one source of truth, so
+ * they cannot disagree.
+ */
+function highlighterActive(): boolean {
+  return document.body?.classList.contains('obsidian-highlighter-active') ?? false;
+}
+
+function toggleHighlighter(): boolean {
+  installHighlighterCss();
+  Reader.toggleHighlighter(document);
+  return highlighterActive();
+}
+
 // 'inline' is the default per Johan's call at G0 (2026-08-31): it costs nothing on pages without
 // CSP, and detecting a CSP refusal in order to fall back is harder than simply always inlining.
 // 'link' stays available for diagnosing whether a page is CSP-restricted at all.
@@ -314,6 +340,13 @@ async function toggle(cssMode: CssMode = 'inline'): Promise<boolean> {
 // installed"; `__clipper` marks "our surface is installed", and this block is what installs it.
 if (!window.__clipper) {
   window.obsidianReaderInitialized = true;
+  // Unconditionally, not only on a reader toggle. Upstream's *content script* has its own
+  // `ensureHighlighterCSS` (content.ts ~L409) and — unlike the reader's — it does not guard on an
+  // existing stylesheet: it always creates a `<link>` to a blob URL, which is what D20 measured
+  // being refused on a CSP-strict page. Installing ours first means the highlighter is styled on a
+  // raw page too, and B3 measured this sheet at 39 rules, so the cost on a page that never
+  // highlights is negligible. Its selectors are all `.obsidian-highlight`-scoped.
+  installHighlighterCss();
   // Before anything reads the query — upstream's reader consults it during apply.
   if (typeof __clipperDarkMode === 'boolean') installColorSchemeBridge(__clipperDarkMode);
   window.__clipper = {
@@ -327,6 +360,8 @@ if (!window.__clipper) {
     installTrustedTypesPolicy,
     sweepBranding,
     hideUnbuiltControls,
+    toggleHighlighter,
+    highlighterActive,
     receive: receiveFromNative,
     hasNativeBridge,
     browser,

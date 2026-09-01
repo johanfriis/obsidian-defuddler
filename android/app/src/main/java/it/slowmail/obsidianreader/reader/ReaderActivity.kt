@@ -469,6 +469,11 @@ private fun onBridgeMessage(message: JSONObject, pendingApply: CompletableDeferr
         // anyway, so there is nothing to do but note it.
         "readerModeChanged" -> Unit
 
+        // The highlighter announcing itself (M2.7). Nothing to do on this side — the page's body
+        // class is the state, and Kotlin reads it there when the clip sheet asks. Named rather than
+        // left to the `else` branch so a genuinely unexpected action still stands out in the log.
+        "highlighterModeChanged", "updateHasHighlights" -> Unit
+
         else -> android.util.Log.i("Reader", "unhandled bridge action: $action")
     }
 }

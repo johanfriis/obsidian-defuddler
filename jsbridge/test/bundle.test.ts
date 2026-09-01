@@ -124,14 +124,16 @@ describe('clipper-bundle', () => {
     expect(run('window.__clipper.browser.runtime.getURL("nope.css")')).toBe('nope.css');
   });
 
-  it('installs highlighter.css inline too, under the id ensureHighlighterCSS guards on', () => {
-    // M4 turns the pen on; without this, highlighter.css stays the one blob <link> a CSP-strict
-    // page still refuses (§2, B3).
-    expect(run('window.__clipper.installHighlighterCss()')).toBe(true);
+  it('installs highlighter.css inline at load, under the id ensureHighlighterCSS guards on', () => {
+    // Installed by the bundle's own init, not left to the reader toggle: upstream's *content
+    // script* has its own ensureHighlighterCSS (content.ts ~L409) which — unlike the reader's —
+    // never guards on an existing sheet and always creates a blob <link>, the thing a CSP-strict
+    // page refuses (§2, B3). Ours has to already be there when it looks.
     expect(run('document.getElementById("obsidian-highlighter-stylesheet").tagName')).toBe('STYLE');
     expect(
       run<number>('document.getElementById("obsidian-highlighter-stylesheet").textContent.length'),
     ).toBeGreaterThan(500);
+    // Idempotent: a second call finds its own sheet and leaves it alone.
     expect(run('window.__clipper.installHighlighterCss()')).toBe(false);
   });
 
@@ -172,27 +174,20 @@ describe('clipper-bundle', () => {
     expect(run('window.__clipper.sweepBranding(document)')).toBe(0);
   });
 
-  it('hides the controls whose milestones have not landed (M1.6)', () => {
-    // Labels come from upstream's own getMessage, which is what the reader renders them with.
+  it('leaves every reader-toolbar control in place — the unbuilt list is empty (M2.7)', () => {
+    // The list emptied out as the milestones landed: `addToObsidian` at M2.6 (its `toggleIframe`
+    // opens our clip sheet) and `highlighter` at M2.7 (`Reader.toggleHighlighter` is local to the
+    // page and needs nothing routed). The mechanism stays, and so does this test: putting a key
+    // back should be a deliberate act that fails here first.
     run(`document.body.innerHTML =
       '<div class="obsidian-reader-nav">' +
       '<button aria-label="Contents"></button>' +
       '<button aria-label="Highlighter"></button>' +
       '<button aria-label="Add to Obsidian"></button>' +
       '<button aria-label="Reader settings"></button>' +
-      '<button aria-label="Add to Obsidian"></button>' +
       '</div>'`);
-    // Only the pen now (M4). Add-to-Obsidian left this list at M2.6: its `toggleIframe` is routed
-    // to our clip sheet, so it is the one-tap clip from inside the reader — and the reason there is
-    // no shell bar (D33). Not the TOC, not Aa.
-    expect(run('window.__clipper.hideUnbuiltControls(document)')).toBe(1);
-    expect(run('document.querySelectorAll("[data-clipper-unbuilt]").length')).toBe(1);
-    for (const label of ['Reader settings', 'Contents', 'Add to Obsidian']) {
-      expect(
-        run(`document.querySelector('[aria-label="${label}"]').hasAttribute("data-clipper-unbuilt")`),
-        `${label} should stay visible`,
-      ).toBe(false);
-    }
+    expect(run('window.__clipper.hideUnbuiltControls(document)')).toBe(0);
+    expect(run('document.querySelectorAll("[data-clipper-unbuilt]").length')).toBe(0);
   });
 
   it('ships the CSS that acts on those marks', () => {

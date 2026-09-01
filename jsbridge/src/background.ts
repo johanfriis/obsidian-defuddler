@@ -78,9 +78,14 @@ const FOR_KOTLIN = new Set([
   'toggleIframe',
   // Content-script questions the extension's background would forward to the tab. The router
   // does the forwarding; listing them here is documentation, since falling through is the default.
+  // The highlighter, including `getHighlighterMode` and `toggleHighlighterMode`. Upstream keeps
+  // that state in its background, per tab; we do not, because the page already holds the only real
+  // answer in a body class, and Kotlin reads it there (M2.7). Routing them through `content.ts`
+  // instead was the bug: its `getHighlighterMode` handler answers by asking the background
+  // (content.ts ~L316), so the question bounced straight back out and nothing ever answered it.
   'getHighlighterMode',
-  'setHighlighterMode',
   'toggleHighlighterMode',
+  'setHighlighterMode',
   'getHighlighterState',
   'getReaderModeState',
   'toggleReaderMode',
@@ -145,6 +150,7 @@ export function installBackground(): void {
           success: true,
           tab: { id: TAB_ID, url: page.url, title: page.title },
         });
+
 
       default:
         if (ACKNOWLEDGED.has(action)) return Promise.resolve({ success: true });

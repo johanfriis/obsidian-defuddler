@@ -80,6 +80,25 @@ class MessageRouter(
                 replyToUi(id, JSONObject().put("success", true).toString())
             }
 
+            // The highlighter. Both pens — the reader toolbar's and the clip sheet's — end up in
+            // the page's own `Reader.toggleHighlighter`, and the page's body class is the only real
+            // answer to whether it is on. Upstream keeps this in its background instead, per tab,
+            // which is why routing these to `content.ts` failed: its handler answers by asking the
+            // background (content.ts ~L316), so the question bounced straight back out.
+            "getHighlighterMode" -> probePage("highlighterActive()") { active ->
+                replyToUi(id, JSONObject().put("isActive", active == "true").toString())
+            }
+
+            "toggleHighlighterMode" -> probePage("toggleHighlighter()") { active ->
+                replyToUi(
+                    id,
+                    JSONObject()
+                        .put("success", active != null)
+                        .put("isActive", active == "true")
+                        .toString(),
+                )
+            }
+
             // Questions for the content script. In the extension the background forwards these to
             // the tab; here that is the same hop as `sendMessageToTab`, just without the wrapper —
             // upstream sends some actions wrapped and some bare, so both shapes have to work.
@@ -129,6 +148,24 @@ class MessageRouter(
     }
 
     // --- plumbing ------------------------------------------------------------
+
+    /**
+     * Call a function on the page bundle's `__clipper` surface and hand back what it returned.
+     *
+     * A direct `evaluateJavascript` rather than a routed message, because the answer is a fact
+     * about *this* document that the bundle already exposes — putting it through the content
+     * script's listener would only add a hop and a way to be swallowed.
+     */
+    private fun probePage(call: String, onResult: (String?) -> Unit) {
+        val page = pageWebView
+        if (page == null) {
+            onResult(null)
+            return
+        }
+        page.evaluateJavascript("(!!window.__clipper) && window.__clipper.$call") { result ->
+            onResult(result)
+        }
+    }
 
     private fun askPage(message: JSONObject, onResult: (String?) -> Unit) {
         val page = pageWebView
@@ -183,9 +220,10 @@ class MessageRouter(
             "ping",
             "getPageContent",
             "extractContent",
-            "getHighlighterMode",
+            // `getHighlighterMode` and `toggleHighlighterMode` are deliberately absent: they are
+            // answered above by probing the page directly, because `content.ts`'s handler for them
+            // answers by asking the background, so forwarding here bounced the question back out.
             "setHighlighterMode",
-            "toggleHighlighterMode",
             "toggleHighlighter",
             "getHighlighterState",
             "getReaderModeState",

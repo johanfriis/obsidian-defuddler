@@ -102,7 +102,7 @@ everything else was decided by Johan explicitly.
 | D5 | v1 = M0 + M1 + M2 + M3 (templates incl. import and URL auto-selection). Post-v1 order: highlighter → in-app login/polish; G2 reconfirms | Johan's call, 2026-08-30. Reader style settings were on the post-v1 list until 2026-09-01: screenshot 2 turned out to be upstream's own `Aa` panel, delivered at M1.3 and closed at M1.8 (§12), so there is nothing left to order. |
 | D6 | Dev environment: Android Studio + physical device; **macOS and Windows are both first-class dev machines** | Johan's call. Hard constraint: Gradle wrapper + Node scripts only, no bash-only tooling. |
 | D7 | Reference device: Oppo Find N6 — Android 16, ColorOS, foldable | Reader must work on cover and inner displays. |
-| D8 | Highlighter (when it lands, M4) is in-session only — no cross-visit persistence | One-shot clip flow doesn't need the desktop extension's cross-visit storage. Flag to change. **Weakened by D31 (2026-09-01):** the in-session rule existed to avoid building persistence, but upstream's `highlights-manager.ts` already has it and the storage shim already backs it. Deferring the highlighter is now more work than shipping it. Revisit at M4's start; the pen is one hidden `data-clipper-unbuilt` attribute away. |
+| D8 | Highlighter (when it lands, M4) is in-session only — no cross-visit persistence | One-shot clip flow doesn't need the desktop extension's cross-visit storage. Flag to change. **Weakened by D31 (2026-09-01):** the in-session rule existed to avoid building persistence, but upstream's `highlights-manager.ts` already has it and the storage shim already backs it. Deferring the highlighter is now more work than shipping it. **Confirmed at M2.7 (2026-09-01): the pen was exactly one `data-clipper-unbuilt` attribute away, and highlighting works.** What is still untested is persistence across visits — `highlights-manager.ts` has it and our storage shim backs it, so the in-session rule is now a *choice* rather than a saving. Decide it at M4.3, with evidence. |
 | D9 | Single configured vault in v1 *(default)* | Screenshot 3's vault dropdown becomes a settings value; multi-vault only if ever needed. |
 | D10 | Clip sheet allows editing both properties and note body *(default)* | Matches desktop clipper. |
 | D11 | `minSdk 31`, `targetSdk 36` | Sole target is the Find N6 on Android 16, so reach is irrelevant; 31 drops the `PendingIntent` mutability and pre-scoped-storage compat branches. Target current Android 16. |
@@ -1000,10 +1000,14 @@ The Kotlin here is plumbing; the clipper is upstream's.
 - **M2.7 — Shim and routing gaps still open.** `storage.onChanged` and `runtime.onUpdateAvailable`
   were fixed at M2.0/M2.1.
   - `browser.commands.getAll` — settings' Hotkeys section throws without it.
-  - `getHighlighterMode` returns undefined, so the popup logs *"Error checking highlighter mode
-    state"* on every open. The router forwards it and `content.ts` is bundled, so this may be close
-    to working — **worth a look before M4, because if the highlighter already works, D8's deferral
-    is buying nothing** (D31 already weakened it).
+  - ~~`getHighlighterMode` returns undefined~~ **FIXED — and the fix collapsed most of M4. See §11.**
+    The cause was routing, not missing state: `content.ts`'s handler for it answers by *asking the
+    background* (content.ts ~L316), because upstream keeps highlighter mode in its background per
+    tab, so forwarding the question to the page bounced it straight back out and nothing answered.
+    The router now probes the page directly (`__clipper.highlighterActive()`), because the page's
+    `obsidian-highlighter-active` body class is the only real answer. **A first attempt kept the
+    state as a boolean in our background instead; it was deleted** — two pens would have drifted
+    apart, and `Reader.toggleHighlighter` already makes the page authoritative.
   - The reader toolbar's clip dropdown offers `copyMarkdownToClipboard` and `saveMarkdownToFile`.
     Both are now visible and neither is routed; §16 assigns them to M2 and M6 respectively.
 
@@ -1084,16 +1088,29 @@ real page. **There is no template store, no importer, no management UI and no ed
 
 ## 11. M4 — Highlighter (post-v1)
 
-- **M4.1** Enable the toolbar pen; verify `highlighter.ts` + `highlighter-overlays.ts` behave in the
-  WebView (they're already in the bundle and their upstream tests already run — M1.7).
-  `highlighter.css` delivery is already handled — inlined since G0 per D20, verified on a CSP-strict
-  page — so M4 does not need to revisit it.
+**Mostly landed at M2.7 (2026-09-01), verified on the Find N6 — it cost almost nothing.** Johan's
+call to check it (*"focus on the highlighter that appears on the reader mode"*) was right: the
+*popup's* pen is the wrong affordance here, because our clip sheet covers the page you would be
+highlighting — the extension's popup is a small chrome overlay, ours is a bottom sheet. The **reader
+toolbar's** pen is the one that makes sense, and it needed no routing at all:
+`Reader.toggleHighlighter` flips a body class and wires the selection handlers entirely within the
+page (`utils/reader.ts` ~L2490).
+
+Measured: pen visible in the reader toolbar → tap → active → long-press a word → highlighted, and
+**the highlight persists after the selection clears**.
+
+- ~~**M4.1** Enable the toolbar pen; verify `highlighter.ts` + `highlighter-overlays.ts` behave in
+  the WebView.~~ **Done at M2.7.** `hideUnbuiltControls`' list is now empty. `highlighter.css` is
+  installed inline at bundle load rather than on the reader toggle, because `content.ts` has its own
+  `ensureHighlighterCSS` (content.ts ~L409) which — unlike the reader's — never guards on an
+  existing sheet and always creates the blob `<link>` D20 measured being refused.
 - **M4.2** ~~Storage shim policy per D8: highlights live in-memory per reader session.~~ **Reconsider at
   M4's start (D31/D8, 2026-09-01):** upstream's `highlights-manager.ts` already implements persistence
   and the storage shim already backs it, so the in-session rule now costs more to enforce than to drop.
   The pen itself is one `data-clipper-unbuilt` attribute away in `bundle-entry.ts`.
 - **M4.3** Wire highlights into `clip()` so the template's highlights variable populates the note;
-  verify against a fixture.
+  verify against a fixture. **This is what actually remains of M4** — the default template does not
+  use `{{highlights}}`, so nothing proved it either way at M2.7.
 - **M4.4** Acceptance: highlight three passages on the Find N6 (touch selection, both displays), clip,
   see them in the note; leaving the reader discards them (D8).
 
@@ -1213,7 +1230,7 @@ check ColorOS's "recommended sharing" settings first.
 | Shell chrome — two mini FABs, `Reader` and `Clip` (D33; no screenshot — post-dates them) | M1 shape, reshaped at M2.6. `Reload` retired |
 | Reader toolbar's Obsidian button → clip sheet (`toggleIframe` redirected) | M2.6 — the one-tap clip from inside the reader |
 | Reader typography, layout, TOC button (1) | M1 |
-| Highlighter pen button (1) | M4 — still hidden in the reader toolbar, but **visible in upstream's popup** since M2.6 kept it; see M2.7 |
+| Highlighter pen button (1) | **Working since M2.7** — the reader toolbar's pen. The popup's pen is the wrong surface here (the sheet covers the page) and is left alone rather than built on |
 | Copy/save popup button (1) | Renders M1; both actions are upstream's under D31 — M2 only backs `copyToClipboard` with Kotlin's ClipboardManager (§2's silent-fallback finding) |
 | Aa reader-style button (1) + the style sheet it opens (2) | **Done at M1.3** — both are upstream's own panel, persisted through the bridge. Nothing left in §12's M5 but the M5.2 theme check |
 | Clipper button — gem replaced (1) → clip sheet (3) | M2 — opens upstream's `popup.html` (D31) |
