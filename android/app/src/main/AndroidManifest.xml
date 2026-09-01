@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- M0 Spike B: the reader WebView loads real pages. -->
+    <!-- The reader WebView loads real pages. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
@@ -11,6 +11,8 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.ClipperDev">
+
+        <!-- Launcher. Almost empty by design: the app is driven from the share sheet. -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -20,11 +22,27 @@
             </intent-filter>
         </activity>
 
-        <!-- M0 Spike B harness (playbook §6). Throwaway; ReaderActivity replaces it in M1. -->
+        <!-- M1.1 — the real entry point. No UI: it resolves the URL and hands off. -->
         <activity
-            android:name=".spike.SpikeBActivity"
+            android:name=".share.ShareReceiverActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Trampoline">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <!-- M1.2 — the reader. configChanges keeps the WebView (and the rendered reader) alive
+             across a fold/unfold on the Find N6 rather than recreating the activity; M1.8 is the
+             pass that proves it. -->
+        <activity
+            android:name=".reader.ReaderActivity"
             android:exported="false"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|uiMode" />
     </application>
 
 </manifest>

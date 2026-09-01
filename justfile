@@ -134,6 +134,12 @@ jsverify:
 devices:
     {{ adb }} devices -l
 
+# Drive the share target from here instead of sharing by hand in a browser (playbook §14).
+share url="https://stephango.com/vault":
+    {{ adb }} shell am start -a android.intent.action.SEND -t text/plain \
+        --es android.intent.extra.TEXT "{{ url }}" \
+        -n {{ pkg }}/.share.ShareReceiverActivity
+
 # How to attach Chrome DevTools to the app's WebView.
 inspect:
     @echo "1. Connect the device over USB with USB debugging enabled ('just devices' to verify)."

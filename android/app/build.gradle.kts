@@ -34,6 +34,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // BuildConfig.DEBUG gates WebView contents debugging (chrome://inspect) in ReaderActivity.
+        buildConfig = true
     }
 }
 

@@ -1,34 +1,29 @@
 package it.slowmail.obsidianreader
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import it.slowmail.obsidianreader.spike.SpikeBActivity
-import it.slowmail.obsidianreader.spike.SpikeScreen
 
 /**
- * Phase 0 scaffold, now a chooser between the two M0 spike harnesses (playbook §6).
- * Spike A stays reachable because M2's acceptance list still references it.
- * M1 replaces all of this with the share -> reader flow.
+ * The launcher screen — and deliberately almost nothing (playbook M1.0).
+ *
+ * The app is driven from the share sheet (M1.1), so tapping the icon has nothing to open. This
+ * says so, and is what `just run` lands on. It grows into M2.4's setup screen: vault name, default
+ * folder, silent-open toggle.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,7 +31,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface {
-                    SpikeChooser()
+                    HomeScreen()
                 }
             }
         }
@@ -44,27 +39,20 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun SpikeChooser() {
-    val context = LocalContext.current
-    var showSpikeA by remember { mutableStateOf(false) }
-
-    if (showSpikeA) {
-        SpikeScreen()
-        return
-    }
-
+private fun HomeScreen() {
     Column(
-        Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("M0 spike harnesses", style = MaterialTheme.typography.titleLarge)
-        Button(
-            onClick = { showSpikeA = true },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Spike A — obsidian:// save path") }
-        Button(
-            onClick = { context.startActivity(Intent(context, SpikeBActivity::class.java)) },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Spike B — reader in a WebView") }
+        Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(R.string.home_hint), style = MaterialTheme.typography.bodyMedium)
     }
+}
+
+/** Smoke test that Gradle sync, the Android facet and the Compose plugin are all wired (P0.2). */
+@Preview(showBackground = true)
+@Composable
+private fun HomeScreenPreview() {
+    MaterialTheme { Surface { HomeScreen() } }
 }

@@ -1,3 +1,8 @@
 <resources>
     <style name="Theme.ClipperDev" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- ShareReceiverActivity has no UI; it must not flash a window on the way to the reader. -->
+    <style name="Theme.Trampoline" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
 </resources>

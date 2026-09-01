@@ -1,4 +1,16 @@
 <resources>
     <!-- Dev-only label; the shipped name is a G2 decision (playbook §10/§17). -->
     <string name="app_name">Clipper (dev)</string>
+
+    <string name="home_hint">Share a link from any app to read it here.</string>
+
+    <string name="share_no_url">No link found in what was shared.</string>
+
+    <!-- Shell bar (D25). -->
+    <string name="action_reader">Reader</string>
+    <string name="action_reload">Reload</string>
+    <string name="action_retry">Retry</string>
+
+    <string name="reader_failed">The reader couldn\'t render this page.</string>
+    <string name="load_failed_title">Couldn\'t load the page</string>
 </resources>
