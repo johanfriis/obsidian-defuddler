@@ -147,14 +147,52 @@ describe('AndroidBridge contract', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('forwards runtime.sendMessage up to Kotlin as JSON', async () => {
+  // M2.2's protocol. The clip sheet asks the *page* for its content, and only Kotlin can carry a
+  // message between two WebViews — so a message that nothing local handles becomes a request with
+  // an id, and the answer comes back against that id. These two tests are the executable spec for
+  // the Kotlin router; get the envelope wrong on either side and they fail instead of the phone.
+  it('sends an unhandled message to Kotlin as a request, and resolves on the reply', async () => {
     calls.length = 0;
-    await run<Promise<unknown>>(
-      'window.__clipper.browser.runtime.sendMessage({ action: "readerModeChanged", isActive: true })',
+    run(
+      'window.__pending = window.__clipper.browser.runtime.sendMessage({ action: "sendMessageToTab", message: { action: "getPageContent" } })',
     );
-    expect(calls).toEqual([
-      { method: 'postMessage', args: ['{"action":"readerModeChanged","isActive":true}'] },
-    ]);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe('postMessage');
+    const sent = JSON.parse(calls[0].args[0] as string);
+    expect(sent.kind).toBe('request');
+    expect(sent.message).toEqual({
+      action: 'sendMessageToTab',
+      message: { action: 'getPageContent' },
+    });
+    expect(typeof sent.id).toBe('number');
+
+    run(
+      `window.__clipper.receive(JSON.stringify({ kind: 'response', id: ${sent.id}, result: { title: 'Hello' } }))`,
+    );
+    expect(await run<Promise<{ title: string }>>('window.__pending')).toEqual({ title: 'Hello' });
+  });
+
+  it('routes an inbound request to upstream\'s content script and answers against its id', async () => {
+    // `getPageContent` is the clip path: the sheet asks it of the page, through Kotlin. Upstream
+    // answers it with `sendResponse` *after* returning `true`, so a dispatcher that only read
+    // return values would call it unhandled and the clip would come back empty.
+    //
+    // What is asserted is the routing — reached the content script, answered against the right id.
+    // Not the extracted content: that is `extraction.test.ts`'s job under jsdom, and D14 says we do
+    // not pin defuddle's output anyway. Here the sandbox is linkedom and the page is one `<p>`.
+    calls.length = 0;
+    run(
+      "window.__clipper.receive(JSON.stringify({ kind: 'request', id: 77, message: { action: 'getPageContent' } }))",
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const reply = calls.find((c) => c.method === 'postMessage');
+    expect(reply, 'no response posted back to Kotlin').toBeDefined();
+    const envelope = JSON.parse(reply!.args[0] as string);
+    expect(envelope.kind).toBe('response');
+    expect(envelope.id).toBe(77);
+    expect(envelope.result, 'content script answered with nothing').toBeDefined();
   });
 
   it('delivers events sent down from Kotlin to onMessage listeners', () => {

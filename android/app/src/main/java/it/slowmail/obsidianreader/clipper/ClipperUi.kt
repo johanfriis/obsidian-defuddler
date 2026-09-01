@@ -1,12 +1,16 @@
 package it.slowmail.obsidianreader.clipper
 
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.webkit.WebViewAssetLoader
+import it.slowmail.obsidianreader.R
 
 /**
  * The UI WebView's origin and the pages served on it (playbook M2.1, D31).
@@ -50,11 +54,16 @@ object ClipperUi {
      * win that race. `readerUrl` is upstream's own name for this — `Reader.toggleReaderPageIframe`
      * passes it the same way — so `core/popup.ts` already knows to read it.
      */
-    fun clipSheetUrl(pageUrl: String, pageTitle: String): String =
+    fun clipSheetUrl(pageUrl: String, pageTitle: String, bridgeToken: String): String =
         Uri.parse("$ORIGIN/$ASSET_DIR/popup.html")
             .buildUpon()
             .appendQueryParameter("readerUrl", pageUrl)
             .appendQueryParameter("pageTitle", pageTitle)
+            // The page WebView takes its token as a closure parameter, because a site's script
+            // shares that document. Nothing foreign runs on this origin, so a query parameter is
+            // enough here — and it is the only carrier available, since these pages load their own
+            // script without a wrapper we could close over.
+            .appendQueryParameter("bridgeToken", bridgeToken)
             .build()
             .toString()
 
@@ -98,5 +107,27 @@ class ClipperUiWebViewClient(
 
     override fun onPageFinished(view: WebView, url: String) {
         onFinished()
+    }
+}
+
+/**
+ * Hands a non-`http(s)` URL to whatever app claims it — in practice always `obsidian://`.
+ *
+ * A4 measured that only `md.obsidian` claims the scheme on the Find N6, so there is no chooser to
+ * defeat. A throw here means Obsidian is not installed, or the URI outgrew the binder limit (A3:
+ * ~1 MB encoded); either way **it is reported, never rerouted** — D2.
+ */
+internal fun openExternally(context: Context, uri: Uri): Boolean {
+    return try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (error: ActivityNotFoundException) {
+        Toast.makeText(context, R.string.no_obsidian, Toast.LENGTH_LONG).show()
+        android.util.Log.w("ClipSheet", "no handler for ${uri.scheme}:", error)
+        true
+    } catch (error: RuntimeException) {
+        Toast.makeText(context, R.string.save_failed, Toast.LENGTH_LONG).show()
+        android.util.Log.w("ClipSheet", "failed to open ${uri.scheme}:", error)
+        true
     }
 }

@@ -356,11 +356,13 @@ Still missing, both small: `browser.commands.getAll` (settings' Hotkeys section)
 
 1. **`navigator.clipboard.writeText` failed and upstream silently rerouted to `content=`.** The URI
    above is the *fallback* path — whole note in the URI, no `&clipboard`. `tryClipboardWrite` catches
-   the failure and switches route without telling anyone, **which is exactly what D2 forbids**. Now
-   confirmed empirically rather than predicted. Fix: back `copyToClipboard` with Kotlin's
-   `ClipboardManager` (A2 proved that path) or make the fallback loud. *Caveat: the spike environment
-   lacked focus/user-gesture, so a real WebView may succeed — but the silent reroute is in the code
-   either way.*
+   the failure and switches route without telling anyone, **which is exactly what D2 forbids**.
+   **Resolved at M2.2 (2026-09-01): it does not fire in the real app.** On the device the log shows
+   `obsidian://new?file=…&clipboard&content=<short error>` — the clipboard path, taken. The spike had
+   simply lacked focus and a user gesture; `WebViewAssetLoader`'s origin is a real https origin, so
+   `navigator.clipboard` is available there, which is one of the reasons that origin was the right
+   choice. **The silent reroute is still in upstream's code**, so M2.3 keeps the acceptance box that
+   forces it and checks the failure is reported — but it is a latent path, not the default.
 2. **The popup calls `window.close()` after a successful clip.** It killed the spike's browser tab
    mid-test. In a WebView that surfaces as `WebChromeClient.onCloseWindow`; the app must dismiss the
    UI WebView on it or be left with a dead sheet.
@@ -916,19 +918,42 @@ The Kotlin here is plumbing; the clipper is upstream's.
     this WebView yet (so its storage is in-memory). Logcat confirms the shape — the responder logs
     `[bg] UNHANDLED action: getHighlighterMode`, then extraction fails. **That is M2.2, not a defect
     here.**
-- **M2.2 — Background responder + message routing.** *Partly landed at M2.1:* `src/background.ts`
-  exists and answers `getActiveTab`/`getTabInfo` locally, acknowledges the fire-and-forget actions,
-  and names the set only Kotlin can service. **What remains is the Kotlin half** — attach a bridge to
-  the UI WebView and route `sendMessageToTab` across to the page WebView, which is the hop M2.0 faked
-  with a same-origin iframe. Our own small module answering the ~15 actions the
-  clip and settings paths send (`getActiveTab`, `getTabInfo`, `sendMessageToTab`, `openObsidianUrl`,
-  `openOptionsPage`, `fetchProxy`, the fire-and-forget notifications). **Upstream's `background.ts` is
-  not ported — D31.** `browser.tabs` is backed by the single page WebView. Kotlin routes
-  `sendMessageToTab` across the two WebViews; M2.0 faked this hop with a same-origin iframe, so this is
-  the first place the spike's result is genuinely re-tested.
-- **M2.3 — Save, via upstream.** `saveToObsidian()` builds the URI; `openObsidianUrl` reaches
-  `window.open('obsidian://…')`; `ReaderWebViewClient.shouldOverrideUrlLoading` (which does not exist
-  yet) catches non-`http(s)` schemes and fires `startActivity`. No `ObsidianUri.kt`, no `SavePipeline.kt`.
+- **M2.2 — Background responder + message routing. DONE (2026-09-01), verified end to end on the
+  Find N6:** share → page → Clip → upstream's sheet populated from the live page → Add to Obsidian →
+  **note in the vault**, with typed properties, `[[Steph Ango]]` from the template's filter chain, and
+  the markdown body. The sheet then closed itself and the app returned to the page. That is v1's
+  definition of done for the happy path, on the real device.
+  - `src/background.ts` answers `getActiveTab`/`getTabInfo` from the single-tab world, acknowledges
+    the fire-and-forget actions, and falls through for the rest. **Upstream's `background.ts` stays
+    unported (D31).**
+  - `clipper/MessageRouter.kt` carries `request`/`response` envelopes between the two WebViews and
+    turns `openObsidianUrl` into an intent. It forwards `sendMessageToTab` *and* the bare
+    content-script actions (`PAGE_ACTIONS`) — upstream sends some wrapped and some bare, so both
+    shapes have to work.
+  - The page bundle now includes upstream's `content.ts`, which is what answers `getPageContent`.
+    Bundle grew 1210 → 1540 KB; B3 measured `evaluateJavascript` at 42–222 ms for ~2 MB, so this is
+    inside what was already proven.
+
+  **The correction that made it work, and it is a semantic one.** The shim used to deliver a
+  document's own `runtime.sendMessage` to that document's own `onMessage` listeners. **Chrome does
+  not do that** — a `sendMessage` goes to the *other* context — and depending on the difference is
+  not pedantry: upstream's content script ends its listener with an unconditional `return true`
+  (content.ts ~L396), meaning "I will answer asynchronously" for every message it is handed, including
+  ones it has no branch for and never answers. Feeding a document its own outbound messages let that
+  catch-all swallow all of them — the reader's own `clipperReaderApplied` included. Outbound now goes
+  to a registered *background stand-in* (only the UI document has one) and then to Kotlin; inbound
+  dispatch to `onMessage` is a separate path. `test/bridge.test.ts` pins both directions.
+
+  **Both documents must expose `window.__clipper.receive`.** The router has one call site for two
+  WebViews. When the UI document lacked it, every reply landed on nothing and the sheet rendered but
+  stayed empty until the shim's timeout — a failure with no error anywhere.
+- **M2.3 — Save, via upstream. *Happy path done at M2.2*; what remains is the failure half.**
+  `saveToObsidian()` builds the URI and `openObsidianUrl` reaches Kotlin, which fires the intent —
+  verified on device, taking the `&clipboard` path. No `ObsidianUri.kt`, no `SavePipeline.kt`.
+  Note the route differs from what this task first assumed: `openObsidianUrl` arrives as a *message*
+  the router turns into an intent, rather than a navigation caught by `shouldOverrideUrlLoading`.
+  `ClipperUiWebViewClient` still overrides non-`http(s)` navigations, as a second door for any path
+  that navigates instead of messaging.
   Two things M2.0 found that this task owns:
   - **Back `copyToClipboard` with Kotlin's `ClipboardManager`, or make its failure loud.** Upstream's
     `tryClipboardWrite` silently reroutes to a full `content=` URI when the clipboard write fails —
@@ -966,8 +991,9 @@ The Kotlin here is plumbing; the clipper is upstream's.
 
 ### Acceptance
 
-- [ ] Upstream's clip sheet opens over a live page in the app and populates from that page's extraction
-  (not a fixture — M2.0 only proved the fixture case).
+- [x] Upstream's clip sheet opens over a live page in the app and populates from that page's extraction
+  (not a fixture — M2.0 only proved the fixture case). *2026-09-01, stephango.com/vault on the Find N6:
+  title, source, author via the wikilink filter, created, description, tags and body all populated.*
 - [ ] Article, YouTube page, and extraction-hostile page all land in the vault correctly (the last as a
   bookmark note).
 - [ ] Note name, folder, properties, and body edits in the sheet are reflected in the saved note.
@@ -975,7 +1001,9 @@ The Kotlin here is plumbing; the clipper is upstream's.
   `overwrite=true` replaces the note in place, unprompted (D30).
 - [ ] A very large note (>512 KB) saves via the clipboard path; with clipboard artificially disabled the
   failure is **reported**, not silently rerouted to `content=` (D2 — M2.0 measured the silent reroute).
-- [ ] The sheet closes cleanly after a save (`onCloseWindow`) and the app returns to the page.
+- [x] The sheet closes cleanly after a save (`onCloseWindow`) and the app returns to the page.
+  *2026-09-01: verified — the note landed, Obsidian foregrounded (A4), and the app was back on the raw
+  page with the shell bar when returned to.*
 - [ ] Backgrounding the app mid-clip with a large note does not crash it — note content stays out of
   saved instance state (G0 landmine).
 - [ ] Second clip started from the share sheet while Obsidian is foregrounded works (round-trip focus).

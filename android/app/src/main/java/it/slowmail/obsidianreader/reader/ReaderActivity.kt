@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -45,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import it.slowmail.obsidianreader.BuildConfig
 import it.slowmail.obsidianreader.clipper.ClipSheet
+import it.slowmail.obsidianreader.clipper.MessageRouter
+import it.slowmail.obsidianreader.clipper.openExternally
 import it.slowmail.obsidianreader.R
 import it.slowmail.obsidianreader.ui.ClipperTheme
 import kotlinx.coroutines.CompletableDeferred
@@ -133,6 +137,8 @@ private const val READER_APPLIED_TIMEOUT_MS = 15_000L
 @Composable
 private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Unit) {
     val context = LocalContext.current
+    val appContext = context.applicationContext
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val scope = rememberCoroutineScope()
 
     var webView by remember { mutableStateOf<WebView?>(null) }
@@ -154,6 +160,21 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
     // Non-null while upstream's clip sheet is up. Holds the page identity captured at the moment
     // Clip was tapped, not a live read: the sheet is clipping the page as it was then.
     var clipping by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    // Carries messages between the two WebViews (M2.2). Held here rather than inside the sheet
+    // because it outlives the sheet: the page WebView is registered with it for the whole session,
+    // and the sheet only attaches and detaches the UI side.
+    val router = remember {
+        MessageRouter(
+            // Bridge calls land on the WebView's JavaBridge thread; everything downstream of here
+            // touches a WebView, which is main-thread only.
+            post = { block -> mainHandler.post(block) },
+            onOpenExternal = { uri -> openExternally(appContext, uri) },
+            // Reads the delegate on each call, so it sees whichever toggle is in flight now — not
+            // whatever was pending when the router was first remembered.
+            onPageEvent = { message -> onBridgeMessage(message, pendingApply) },
+        )
+    }
 
     // A full reload of whatever the WebView currently shows. Also the recovery for a reader tapped
     // before the page settled (D26): reload, wait, tap Reader again.
@@ -284,9 +305,7 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
                             // applies to pages loaded after it is added. WebView calls in on its
                             // own thread, so the handler hops back to main before touching state.
                             addJavascriptInterface(
-                                AndroidBridge(bridgeToken, prefs) { json ->
-                                    post { onBridgeMessage(json, pendingApply) }
-                                },
+                                AndroidBridge(bridgeToken, prefs) { json -> router.fromPage(json) },
                                 AndroidBridge.NAME,
                             )
 
@@ -333,6 +352,7 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
                                 },
                             )
                             webView = this
+                            router.pageWebView = this
                             loadUrl(url)
                         }
                     },
@@ -351,6 +371,9 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
         ClipSheet(
             pageUrl = pageUrl,
             pageTitle = pageTitle,
+            bridgeToken = bridgeToken,
+            prefs = prefs,
+            router = router,
             onDismiss = { clipping = null },
         )
     }
@@ -431,11 +454,7 @@ private fun LoadErrorPane(description: String, onRetry: () -> Unit) {
  * Nothing here may be treated as authorisation to act on the vault: page script can reach
  * `window.__clipper` and therefore `sendMessage`. M2's save must start from a tap on this side.
  */
-private fun onBridgeMessage(json: String, pendingApply: CompletableDeferred<Boolean>?) {
-    val message = runCatching { JSONObject(json) }.getOrElse {
-        android.util.Log.w("Reader", "unparseable bridge message: ${json.take(120)}")
-        return
-    }
+private fun onBridgeMessage(message: JSONObject, pendingApply: CompletableDeferred<Boolean>?) {
     when (val action = message.optString("action")) {
         ClipperBundle.ACTION_READER_APPLIED ->
             pendingApply?.complete(message.optBoolean("rendered", false))

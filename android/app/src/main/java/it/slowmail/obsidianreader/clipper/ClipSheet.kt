@@ -1,6 +1,7 @@
 package it.slowmail.obsidianreader.clipper
 
 import android.annotation.SuppressLint
+import android.content.SharedPreferences
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -17,7 +18,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import it.slowmail.obsidianreader.R
+import it.slowmail.obsidianreader.reader.AndroidBridge
 
 /**
  * Upstream's clip sheet, hosted (playbook M2.1, D31).
@@ -29,7 +30,14 @@ import it.slowmail.obsidianreader.R
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ClipSheet(pageUrl: String, pageTitle: String, onDismiss: () -> Unit) {
+fun ClipSheet(
+    pageUrl: String,
+    pageTitle: String,
+    bridgeToken: String,
+    prefs: SharedPreferences,
+    router: MessageRouter,
+    onDismiss: () -> Unit,
+) {
     val context = LocalContext.current
     val dismiss = rememberUpdatedState(onDismiss)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -45,6 +53,14 @@ fun ClipSheet(pageUrl: String, pageTitle: String, onDismiss: () -> Unit) {
                     // WebView this one needs no bundle injection, no CSP workarounds and no
                     // Chrome-mobile UA. It is closer to a normal app WebView than to a browser.
                     settings.domStorageEnabled = true
+
+                    // The same bridge and the same preferences file as the page WebView, because
+                    // in an extension there is one `browser.storage` and both documents see it —
+                    // the Aa panel's reader settings and the popup's templates are one store.
+                    addJavascriptInterface(
+                        AndroidBridge(bridgeToken, prefs) { json -> router.fromUi(json) },
+                        AndroidBridge.NAME,
+                    )
 
                     webViewClient = ClipperUiWebViewClient(
                         context = ctx,
@@ -71,32 +87,16 @@ fun ClipSheet(pageUrl: String, pageTitle: String, onDismiss: () -> Unit) {
                         }
                     }
 
-                    loadUrl(ClipperUi.clipSheetUrl(pageUrl, pageTitle))
+                    router.uiWebView = this
+                    loadUrl(ClipperUi.clipSheetUrl(pageUrl, pageTitle, bridgeToken))
                 }
             },
-            onRelease = { it.destroy() },
+            onRelease = { web ->
+                // The router outlives the sheet; leaving a destroyed WebView on it would make the
+                // next reply crash instead of being dropped.
+                if (router.uiWebView === web) router.uiWebView = null
+                web.destroy()
+            },
         )
-    }
-}
-
-/**
- * Hands a non-`http(s)` URL to whatever app claims it — in practice always `obsidian://`.
- *
- * A4 measured that only `md.obsidian` claims the scheme on the Find N6, so there is no chooser to
- * defeat. A throw here means Obsidian is not installed, or the URI outgrew the binder limit (A3:
- * ~1 MB encoded); either way **it is reported, never rerouted** — D2.
- */
-private fun openExternally(context: android.content.Context, uri: Uri): Boolean {
-    return try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        true
-    } catch (error: ActivityNotFoundException) {
-        Toast.makeText(context, R.string.no_obsidian, Toast.LENGTH_LONG).show()
-        android.util.Log.w("ClipSheet", "no handler for ${uri.scheme}:", error)
-        true
-    } catch (error: RuntimeException) {
-        Toast.makeText(context, R.string.save_failed, Toast.LENGTH_LONG).show()
-        android.util.Log.w("ClipSheet", "failed to open ${uri.scheme}:", error)
-        true
     }
 }

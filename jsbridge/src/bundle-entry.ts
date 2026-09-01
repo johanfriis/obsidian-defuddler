@@ -4,6 +4,11 @@
 // Layer B (reader) only for now; Layer A (`clip()`) joins it in M2.
 
 import { Reader } from '../vendor/obsidian-clipper/src/utils/reader';
+// Upstream's content script, imported for its side effects: it registers the
+// `browser.runtime.onMessage` listener that answers `getPageContent` — the question the clip sheet
+// asks this document through Kotlin (M2.2). It is an IIFE with its own generation guard, so a
+// second injection yields to the newer instance rather than double-answering.
+import '../vendor/obsidian-clipper/src/content';
 import { initializeI18n } from '../vendor/obsidian-clipper/src/utils/i18n';
 import browser, { bundledAssets, hasNativeBridge, receiveFromNative } from '../shim/browser';
 

@@ -13,10 +13,13 @@
 //   - ones only Kotlin can service, because they touch the *other* WebView or the OS
 //     (`sendMessageToTab`, `openObsidianUrl`). Those are forwarded over the bridge.
 //
-// Registered as a `runtime.onMessage` listener, which the shim consults before it forwards anything
-// to Kotlin — so an action handled here never reaches the bridge at all.
+// It registers as the document's *background stand-in* rather than as a `runtime.onMessage`
+// listener, because those are different things and the difference bites. Chrome never delivers a
+// `runtime.sendMessage` back to its sender; the shim keeps that rule, so this handler is consulted
+// on the way out and page listeners are only reached by messages arriving from elsewhere. Anything
+// this module returns `undefined` for falls through to Kotlin.
 
-import browser from 'webextension-polyfill';
+import { registerBackground, receiveFromNative } from '../shim/browser';
 
 /** There is exactly one tab. Kotlin owns it; this is its id everywhere in the UI's world. */
 export const TAB_ID = 1;
@@ -69,6 +72,14 @@ const ACKNOWLEDGED = new Set([
  */
 const FOR_KOTLIN = new Set([
   'sendMessageToTab',
+  // Content-script questions the extension's background would forward to the tab. The router
+  // does the forwarding; listing them here is documentation, since falling through is the default.
+  'getHighlighterMode',
+  'setHighlighterMode',
+  'toggleHighlighterMode',
+  'getHighlighterState',
+  'getReaderModeState',
+  'toggleReaderMode',
   'openObsidianUrl',
   'openOptionsPage',
   'openSettings',
@@ -82,7 +93,14 @@ const FOR_KOTLIN = new Set([
 const seen = new Set<string>();
 
 export function installBackground(): void {
-  browser.runtime.onMessage.addListener((raw: unknown) => {
+  // Kotlin's way in, under the same name the page WebView uses, so the router has one call site for
+  // both documents. Without it a reply from Kotlin lands on nothing and every request this document
+  // makes waits out the shim's timeout — a sheet that renders but stays empty.
+  (window as unknown as { __clipper: { receive: (json: string) => void } }).__clipper = {
+    receive: receiveFromNative,
+  };
+
+  registerBackground((raw: unknown) => {
     const message = (raw ?? {}) as Message;
     const action = message.action;
     if (!action) return undefined;
