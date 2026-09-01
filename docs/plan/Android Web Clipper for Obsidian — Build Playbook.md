@@ -45,20 +45,25 @@ Bumping either pin follows the procedure in §14 — never casually.
 - A fresh implementation session should read §1 (decisions), §2 (gate outcomes), §3 (upstream ground
   truth), and the milestone it is executing. Architecture & Rationale is background reading; Problem &
   UI Reference is where every "screenshot N" reference resolves.
-- **Where things stand (2026-09-01): M0 and M1 are built; G0 and G1 are both CLOSED — passed. The
-  next thing that happens is M2.** Every M1 task (M1.0–M1.8) is implemented and verified on the
-  Find N6; G1 passed on Johan reading real articles on the device (§2). Three M1 acceptance boxes
-  carried through the gate honestly unticked — see §7, and the carried-forward box in §8.
+- **Where things stand (2026-09-01): M0 and M1 are built; G0 and G1 are both CLOSED — passed. M2 was
+  re-planned the same day around D31 and the next thing that happens is M2.1.** Every M1 task
+  (M1.0–M1.8) is implemented and verified on the Find N6; G1 passed on Johan reading real articles on
+  the device (§2). Three M1 acceptance boxes carried through the gate honestly unticked — see §7, and
+  the carried-forward box in §8.
 
-  **Before writing any M2 code, read D25–D29 in §1.** All taken 2026-09-01, and several overrule
-  fixes or text recorded earlier the same day: D26 (re-extract is not buildable; Reload is the
-  recovery) and D29 (no algorithmic darkening) in particular. §2's G0 findings still correct
-  several older assumptions.
+  **Before writing any M2 code, read D31 — it is the largest decision in this document.** The app
+  hosts upstream's own extension UI instead of reimplementing it in Compose. That reverses what §8 and
+  §9 used to say, retires D16 and D27 outright, and narrows D14 and D20. The M2.0 spike that proved it
+  is in §2; its findings are load-bearing, especially the silent clipboard fallback and the popup's
+  `window.close()`.
 
-  Two constraints M2 inherits, both earned rather than assumed: **an inbound JS message is never
-  authorisation to save** (D27), and **the bookmark fallback must trigger on empty *text*, not an
-  empty content string** (M1.7's Instagram fixture). M2.3's `overwrite` question is settled —
-  behaviour flags are executed as written, unprompted (D30). **M2 has no open decisions.**
+  Also read D25–D30. D26 (re-extract is not buildable; Reload is the recovery) and D29 (no algorithmic
+  darkening) overrule text recorded earlier the same day; D30 settles behaviour flags — executed as
+  written, unprompted. §2's G0 findings still correct several older assumptions.
+
+  One constraint M2 inherits, earned rather than assumed: **the bookmark fallback must trigger on
+  empty *text*, not an empty content string** (M1.7's Instagram fixture). Upstream has no bookmark
+  feature at all — verified, zero hits in `src/` — so M2.5 is genuinely ours to build.
 
   Read §5's status block for the `just`-based dev loop, which post-dates this playbook's original
   text.
@@ -97,29 +102,31 @@ everything else was decided by Johan explicitly.
 | D5 | v1 = M0 + M1 + M2 + M3 (templates incl. import and URL auto-selection). Post-v1 order: highlighter → in-app login/polish; G2 reconfirms | Johan's call, 2026-08-30. Reader style settings were on the post-v1 list until 2026-09-01: screenshot 2 turned out to be upstream's own `Aa` panel, delivered at M1.3 and closed at M1.8 (§12), so there is nothing left to order. |
 | D6 | Dev environment: Android Studio + physical device; **macOS and Windows are both first-class dev machines** | Johan's call. Hard constraint: Gradle wrapper + Node scripts only, no bash-only tooling. |
 | D7 | Reference device: Oppo Find N6 — Android 16, ColorOS, foldable | Reader must work on cover and inner displays. |
-| D8 | Highlighter (when it lands, M4) is in-session only — no cross-visit persistence | One-shot clip flow doesn't need the desktop extension's cross-visit storage. Flag to change. |
+| D8 | Highlighter (when it lands, M4) is in-session only — no cross-visit persistence | One-shot clip flow doesn't need the desktop extension's cross-visit storage. Flag to change. **Weakened by D31 (2026-09-01):** the in-session rule existed to avoid building persistence, but upstream's `highlights-manager.ts` already has it and the storage shim already backs it. Deferring the highlighter is now more work than shipping it. Revisit at M4's start; the pen is one hidden `data-clipper-unbuilt` attribute away. |
 | D9 | Single configured vault in v1 *(default)* | Screenshot 3's vault dropdown becomes a settings value; multi-vault only if ever needed. |
 | D10 | Clip sheet allows editing both properties and note body *(default)* | Matches desktop clipper. |
 | D11 | `minSdk 31`, `targetSdk 36` | Sole target is the Find N6 on Android 16, so reach is irrelevant; 31 drops the `PendingIntent` mutability and pre-scoped-storage compat branches. Target current Android 16. |
 | D12 | Sideload-only distribution *(default)* | Personal keystore; no Play Store steps anywhere in this playbook. |
 | D13 | Bookmark-only fallback ships in M2, not polish *(default)* | Graceful failure is part of a trustworthy save pipeline. |
-| D14 | Extraction regression harness starts in M1 *(default)* | Every submodule bump is guarded from the beginning. |
+| D14 | **The *shim* has tests; extraction quality does not.** The harness starts in M1 *(default)* | Originally "every submodule bump is guarded from the beginning". **Narrowed by Johan, 2026-09-01, at the D31 review:** `extraction.test.ts` pinned word counts, exact author strings and content snapshots — assertions about defuddle's *output quality*, which legitimately shifts per release and which Johan would notice anyway as a template property coming up empty. Pinning them makes bumps noisy without making them safer, and upstream is the better judge. What stays and grows more valuable under D31 is `bootstrap`/`bundle`/`bridge` — tests of **our** code: the bundle builds, the shim's storage/i18n/messaging answer correctly. Fixtures stay on disk as manual reference (Instagram's empty-*text* case is still why M2.5 exists). **Accepted consequence: a submodule bump can break upstream UI that nothing tests.** |
 | D15 | Project license MIT; `THIRD_PARTY_LICENSES` shipped in APK; no Obsidian trademarks in shipped branding | See §17. |
-| D16 | Templates are authored/edited in the desktop clipper and imported here as JSON *(default)* | v1 imports and selects templates; it does not include a template editor. |
+| D16 | ~~No template editor in v1~~ **RETIRED by D31 (2026-09-01).** The app ships upstream's editor | The decision priced an editor as expensive work to build. It is not work at all: `settings.html` + `core/settings.ts` + `managers/template-ui.ts` + `utils/import-export.ts` are a complete editor with triggers, behaviour flags and JSON export/import, and M2.0 brought them up under our shim unmodified (§2). Desktop authoring still works and imports the same JSON; it is simply no longer the *only* way. |
 | D17 | Track the current stable toolchain (AGP/Gradle/JDK) rather than pinning to an older one or shimming | Standard tools at their sanctioned versions beat local workarounds; migrations are cheapest taken early. Toolchain versions live in `android/gradle/libs.versions.toml`, `android/gradle/wrapper`, `android/gradle/gradle-daemon-jvm.properties` and `mise.toml`. |
 | D18 | `SafWriter` (M2.4) and SAF hardening (M6.3) deferred, not deleted | Follows from D2: with no SAF save path there is nothing to write or harden. **The original justification (SAF bypasses Obsidian's triggers) turned out not to separate the two options — A5 showed `obsidian://` bypasses them too.** What the deferral now rests on is cost: `SafWriter` reimplements append/overwrite that Obsidian gives us free, plus tree-URI permission plumbing to build and harden. Two accepted trades: (1) `obsidian://` always foregrounds Obsidian (A4) — SAF would have allowed a true background save; (2) the URI contract is now a single point of failure — acceptable because notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss. |
 | D19 | Bundle English UI strings only (`LOCALES = ['en']`) and highlight.js's ~40-language `lib/common` rather than the full ~190 | Johan's call, 2026-08-31, confirming the B1 trims. Both degrade gracefully — `getMessage` falls back to English, `highlightElement` leaves an unregistered language unstyled — and both are one-line reverts in `jsbridge/build.mjs`. |
-| D20 | Reader CSS is delivered as an inline `<style>` by default, not upstream's blob-URL `<link>` — for `reader.css` and `highlighter.css` alike | Johan's call, 2026-08-31 at G0. Measured: the blob path is refused by any page with a `style-src` that omits `blob:` (github.com), leaving the reader stripped and unstyled. Inlining costs nothing on pages without CSP, and detecting a refusal in order to fall back is harder than always inlining. Implemented without patching upstream — see `installStyle` in `jsbridge/src/bundle-entry.ts`. |
+| D20 | Reader CSS is delivered as an inline `<style>` by default, not upstream's blob-URL `<link>` — for `reader.css` and `highlighter.css` alike | Johan's call, 2026-08-31 at G0. Measured: the blob path is refused by any page with a `style-src` that omits `blob:` (github.com), leaving the reader stripped and unstyled. Inlining costs nothing on pages without CSP, and detecting a refusal in order to fall back is harder than always inlining. Implemented without patching upstream — see `installStyle` in `jsbridge/src/bundle-entry.ts`. **Scope narrowed by D31 (2026-09-01): this applies to the *page* WebView only.** UI pages served from our own origin are not subject to any page's CSP, so `runtime.getURL` is a plain relative URL there and their CSS is a real `<link>` again. |
 | D21 | Install a pass-through Trusted Types `default` policy before the reader runs | Johan's call, 2026-08-31 at G0. Without it, pages sending `require-trusted-types-for 'script'` (YouTube) kill the reader outright — Defuddle's `innerHTML` and `Reader.apply`'s `DOMParser` both throw and nothing renders. A browser extension never meets this because its content script runs in an isolated world Trusted Types does not police; our main-world injection is policed. **The accepted trade:** the policy switches off the page's own XSS guard for the life of that document. Johan's reasoning — the reader/clip session is ephemeral, the page is one he chose, and we already inject a bundle that rewrites the whole DOM. Only creatable where the page sends no `trusted-types` directive naming allowed policies; where it is refused we log and the page fails visibly. See `installTrustedTypesPolicy` in `jsbridge/src/bundle-entry.ts`. |
 | D22 | B4's extraction-quality pass is folded into M1.7's fixture harness rather than run as a throwaway spike *(default)* | B3 already exercised extraction on four real pages including the two hard ones (CSP-strict, Trusted Types), so B4's remaining value is markdown/metadata quality on saved fixtures — which is exactly M1.7's job. Same work, but the output is kept and guards every future submodule bump (D14). M0 therefore ends at G0. Two B3 findings carry into M1.7 as fixture cases: unflattened shadow DOM on github, and the YouTube settle-time question. |
 | D23 | **No generic browser UI, ever.** No URL bar, no back/forward, no tabs, history or downloads. If a page cannot be read without signing in, that is a workaround Johan performs outside the app — or the clip does not happen | Johan's call, 2026-08-31, when the question of pulling M6.1's browsing strip into M1 was raised. He clips from logged-in sites rarely, and a browser surface is far larger than it looks (tabs, downloads, uploads, fullscreen video, permission prompts, PDFs). This bounds M6.1 and overrides the "normal browser chrome" mitigation the Architecture doc used to propose. |
 | D24 | **Reader mode is user-triggered, not automatic.** The shared page loads and renders normally; the app shell shows a "Reader" toggle. Recovery for a too-early tap: Reload → wait → tap Reader again (D26) | Johan's call, 2026-09-01, resolving the M1.6 problem B3 opened. **Rests on the governing principle above**: the toggle keeps Johan in the decision loop instead of the machine mandating a transform that may land him in a broken state. Secondary benefits: a badly extracting page leaves him looking at the real page he can decline to toggle, and an on-page login form becomes usable for free (what remains of M6.1 after D23). **The settle-timing argument does *not* hold and is not what this rests on** — see M1.6. |
 | D25 | **Shell chrome is one slim bottom bar: `Reader`, `Reload`, and `Clip` from M2** | Johan's call, 2026-09-01. D24 requires a surface to host the reader toggle and D23 forbids a browser UI, but §16's inventory owned neither — the bar closes that gap. `Reload` is a full page reload, available in both states, added at Johan's request. It is deliberately *not* back/forward/URL/tabs, so D23 holds. After a reload the raw page is showing with the reader off, since D24 forbids auto-toggling. |
 | D26 | **No re-extract action; Reload is the recovery for a too-early reader tap** | Johan's call, 2026-09-01, on evidence that M1.6's re-extract is not buildable. `Reader.apply` ends its cleanup with `doc.body.textContent = ''` and stores no copy of the original (`utils/reader.ts` ~L2130); `cleanupScripts` (~L1376) clears every page timer; `restore` (~L2383) recovers the page only by `window.location.reload()`. So once the reader is on, the page's DOM *and* its running scripts are gone: a late-hydrating YouTube transcript can never arrive, and a re-extract would re-parse the reader's own output. The recovery is Reload → wait → tap Reader, which toggling the reader off already does internally. The architecture where re-extract genuinely works — render into a separate document via `Reader.preExtractedContent` / `reader-view.ts` / `toggleReaderPageIframe`, leaving the original page alive and hydrating underneath — is a Layer B rework, **not carried to G1 as an agenda item**; revisit only if reading real articles shows extraction timing is a recurring problem. |
-| D27 | **`AndroidBridge` is gated on a per-activity token, handed to the bundle as a closure parameter** *(default)* | `addJavascriptInterface` attaches the bridge to the main world of every page the WebView loads, so a hostile page's script can call it exactly as our bundle does. minSdk 31 means only `@JavascriptInterface` methods are reachable (no reflection), so the exposure is bounded to what we write — but what we write grows a save-to-vault path in M2. The token is passed as a closure parameter by the injection wrapper and never assigned to `window`, which page script could read. **Residual, recorded rather than papered over: anything on `window.__clipper` is reachable by the page, including our storage and `sendMessage`. M2 must never treat an inbound message as authorisation to save** — the save is initiated by a tap on the Kotlin side. **Threat model bounded by Johan (2026-09-01, M1 architecture review): the app is personal-use and he chooses what reaches it, so a hostile page attacking the bridge is out of scope.** Consequence: the wide diagnostic surface on `window.__clipper` (the shim, the installers, the sweep helpers) ships as-is rather than being DEBUG-gated — do not re-propose trimming it — and the token stays for what M2 adds to the bridge. The tap-only save rule stands regardless, as defence in depth. |
+| D27 | **`AndroidBridge` is gated on a per-activity token, handed to the bundle as a closure parameter** *(default)* | `addJavascriptInterface` attaches the bridge to the main world of every page the WebView loads, so a hostile page's script can call it exactly as our bundle does. minSdk 31 means only `@JavascriptInterface` methods are reachable (no reflection), so the exposure is bounded to what we write — but what we write grows a save-to-vault path in M2. The token is passed as a closure parameter by the injection wrapper and never assigned to `window`, which page script could read. **Residual, recorded rather than papered over: anything on `window.__clipper` is reachable by the page, including our storage and `sendMessage`. M2 must never treat an inbound message as authorisation to save** — the save is initiated by a tap on the Kotlin side. **Threat model bounded by Johan (2026-09-01, M1 architecture review): the app is personal-use and he chooses what reaches it, so a hostile page attacking the bridge is out of scope.** Consequence: the wide diagnostic surface on `window.__clipper` (the shim, the installers, the sweep helpers) ships as-is rather than being DEBUG-gated — do not re-propose trimming it. **The tap-only save rule is RETIRED (Johan, 2026-09-01, at the D31 review): "I am not worried about a hostile page clipping to my vault… if the webclipper UI is able to call out to the obsidian vault without hitting the Kotlin bridge, then I am fine with that."** It was overspecified and it blocked D31 — under D31 the save is a tap inside upstream's own sheet, so no Kotlin-side tap exists to gate on. The save leaves via `window.open('obsidian://…')` and `shouldOverrideUrlLoading`, touching no bridge method at all. **The per-activity token stays** — it costs nothing and still bounds what page script can do to storage. |
 | D28 | **The committed `clipper-bundle.js` is the production build** — minified, `DEBUG_MODE` off. `just jsbuild-debug` is a local-only override | Johan's call, 2026-09-01, closing M1.4's open question. There is one `assets/` directory, so whatever is committed is what a release APK ships; committing the debug build meant shipping ~800 KB of extra bytes with verbose logging on. The cost is B2's deliberate choice of an unminified artifact for unaided `chrome://inspect` reading — recovered by `just jsbuild-debug` (and `jsbuild-debug-map` for sourcemaps). Note `just jsverify` rebuilds `--prod` in place before diffing: a *committed* debug artifact fails it, while an uncommitted local one is silently rebuilt back to prod and passes. The rejected alternative was a Gradle-driven `--prod` build on the release variant, which would have made release builds require Node — something §14 promises they never do. **Consequence for the test suite:** it builds `--prod` to `jsbridge/.tmp/` via `--outfile`, so running tests exercises exactly what ships and can never leave a debug artifact in the tree. |
 | D29 | **No algorithmic darkening. The raw page renders as authored, and the reader is told the app's theme directly** *(default)* | **Reverses the mechanism recorded under M1.8 earlier the same day (2026-09-01), on Johan's report that a raw page in dark mode was "almost unreadable".** `setAlgorithmicDarkeningAllowed` is the only switch that makes a WebView report `prefers-color-scheme: dark`, which is why it appeared to be the answer — it is what made the reader go dark. But WebView only defers to a page's own dark theme when the page declares `color-scheme`; stephango drives its theme from JS and declares nothing, so it was machine-darkened into dark-grey text on a dark background. Measured worse than the light page it replaced. The reader now learns the theme from a `darkMode` closure parameter and answers `prefers-color-scheme` itself (`installColorSchemeBridge`), so both surfaces are right: raw pages exactly as their authors drew them, reader properly dark. A site that picks its theme from the same query now gets to apply *its own* dark stylesheet — the thing algorithmic darkening was a poor substitute for. Johan's explicit Light/Dark choice in the `Aa` panel is untouched; it never consults the query. |
 | D30 | **Template behaviour flags are executed as written — `overwrite=true` replaces the existing note, no existence check, no confirmation** | Johan's call, 2026-09-01, closing M2.3's open question. A template is a standing human decision: its creator chose that modality for a reason (and importing one is adopting it — M3.2), so it is respected, not continually challenged. This *is* the governing principle rather than an exception — deciding in advance is still the human deciding; see the principle's note above. Safety context from A4: the no-flag default de-duplicates (`note 1.md` beside `note.md`), so replacement only ever happens where a template explicitly asks for it. |
+| D31 | **The app hosts upstream's extension; it does not reimplement its UI.** Two WebViews — the page WebView as today, plus a UI WebView on a `WebViewAssetLoader` origin serving upstream's own `popup.html` / `side-panel.html` / `settings.html`. The shim becomes the extension runtime | Johan's call, 2026-09-01, at the M2 planning review: *"if I could have the Obsidian Web Clipper in an android app, then I would be happy"*. §8 previously had M2.2 building a Compose `ModalBottomSheet` and M2.3 porting the save recipe by hand — **both reimplement code the submodule already contains.** `src/popup.html` + `src/core/popup.ts` *is* screenshot 3, element for element; `src/utils/obsidian-note-creator.ts` *is* §3's save recipe, which §3 already told us to mirror rather than improvise. **M2.0's spike (§2) brought the clip sheet, the save path, the settings page and the template editor up against our shim with zero changes to upstream source.** The mapping is direct: content script → page WebView (already how M1 works); popup/settings → UI WebView on our origin (the `chrome-extension://` analogue); `browser.storage`/`i18n`/`runtime` → the shim (already built); `browser.tabs` → trivial, there is exactly one tab and Kotlin owns it; `obsidian://` → `shouldOverrideUrlLoading` → `startActivity`. **Upstream's `background.ts` is NOT ported** — 1109 lines of browser-chrome management (context menus, tab lifecycle, `webRequest`, `action.setPopup`) that a single-tab app has no use for. We write a small responder for the ~15 actions the clip and settings paths actually send. That is B1's one-alias shim move, one layer up. Kotlin shrinks to: share intent, two WebViews, message routing, intent dispatch, first-run vault name. **Retires D16 and D27's tap-only rule; narrows D14 and D20; weakens D8. Accepted cost, eyes open: a submodule bump can break upstream UI nothing tests (D14), and we inherit upstream features wholesale rather than picking them.** |
+| D32 | **Reader stays in the page WebView.** It is not moved to the UI origin, and there is no second reader implementation | Johan's call, 2026-09-01: *"if possible, don't fork the reader"*. Upstream's `reader-page` / `core/reader-view.ts` entry would render the reader as its own document — the architecture D26 describes as the dormant Layer B rework, which would make re-extract buildable. Tempting, but the injected reader works, G1 passed on it, and moving it doubles D31's blast radius. **One implementation, where it is.** Revisit only after the UI WebView lands; if it lands well, D26's rework becomes cheap rather than speculative. |
 
 ## 2. Gate outcomes
 
@@ -142,15 +149,19 @@ Filled in as gates are passed. Empty = not reached.
   *loudly*: `startActivity` throws and is caught, no note is written, nothing is silently truncated.
   Percent-encoding inflates the body roughly **2.7×** on the way into the parcel, so what hits the
   ~1 MB binder limit is the encoded URI, not the markdown. For scale, 512 KB of markdown is ~80,000
-  words; a long feature article is 30–60 KB. **Consequence: no threshold constant.** `SavePipeline`
-  tries `content=` and catches, rather than branching on a measured maximum (M2.3).
+  words; a long feature article is 30–60 KB. **Consequence: no threshold constant** — try and catch,
+  never a magic maximum. Under D31 the try/catch is upstream's `saveToObsidian`; what M2.3 owns is
+  catching the `startActivity` throw and reporting it (D2).
 - **Default behaviour is de-duplicate, not overwrite.** Firing the same `file=` twice yields
   `note 1.md` alongside `note.md`. A4's `overwrite=true` is what changes this.
 - **Landmine found, applies to M2.** The spike harness kept the full encoded URI in a
   `rememberSaveable`; at 512 KB that is ~1.4 MB of saved instance state and the activity died with
   `TransactionTooLargeException` in `PendingTransactionActions$StopInfo.run` *after* the note had
   already saved — a crash that looks like a save failure but is not. **Note content must never enter
-  saved instance state** in `ReaderActivity`/`SavePipeline`, at any size.
+  saved instance state** in `ReaderActivity` or anything it hosts, at any size. **Still live under
+  D31** — the note now lives in the UI WebView's JS heap rather than Kotlin, which sidesteps the
+  original crash, but any Kotlin that touches note text (the clipboard write, M2.3) must stay out of
+  `rememberSaveable`.
 - **Only `md.obsidian` claims the `obsidian://` scheme** on this device, so there is no chooser dialog
   to defeat the silent path.
 - **A4 pass, all four behaviours.** Default de-duplicates (`note 1.md` beside `note.md`);
@@ -304,6 +315,66 @@ ellipsizes.
 2. ~~**Is `inline` the right default for reader CSS?**~~ **Yes → D20**, extended to `highlighter.css`
    at Johan's request.
 
+### M2.0 / extension-host spike findings — 2026-09-01, build machine (desktop Chromium)
+
+Harness: `jsbridge/spike/` + `spike/build-ui.mjs` (throwaway, same convention as B3's
+`SpikeBActivity.kt`). It builds upstream's `popup.html`, `side-panel.html` and `settings.html` as if
+served from our own origin, with a fake background responder and an off-screen fixture frame standing
+in for the page WebView. **Run it with `node spike/build-ui.mjs --page <fixture>.html`, serve
+`.spike-ui/`, open `popup.html`.** This spike answered D31; delete it once M2.2 lands for real.
+
+- **Pass — upstream's UI runs on our shim with zero changes to upstream source.** The only edits are
+  two lines of HTML rewriting (drop the extension's `browser-polyfill.min.js` tag) and 26 lines added
+  to `shim/browser.ts`. `core/popup.ts` and `core/settings.ts` compile through the existing
+  `webextension-polyfill` alias untouched.
+- **The clip sheet is screenshot 3, live and functional.** Template dropdown, note name, all seven
+  typed properties with the right icons, values populated from real Defuddle extraction — including
+  the filter chain `{{author|split:", "|wikilink|join}}` rendering as `[[Steph Ango]]`. Markdown body,
+  folder field, "Add to Obsidian" with its secondary-action dropdown.
+- **The save path produced a correct URI** — `obsidian://new?file=Clippings%2FHow%20I%20use%20Obsidian`
+  plus YAML frontmatter (title, source, author list, published, created, description, tags) and the
+  markdown body. §3's recipe, executed by upstream's own `saveToObsidian`, not ported.
+- **`settings.html` renders completely** — General / Reader / Highlighter / Interpreter / Properties,
+  and a **Vaults** field, which is D9's vault name as an upstream setting we no longer have to build.
+- **The template editor works**: template name, triggers (M3's URL auto-selection), the Behavior
+  dropdown (D30's flags), `{{title}}` note-name formatting, and JSON Export/Import (M3.2). **This is
+  what retires D16.**
+
+**Two real shim gaps, both fixed** (`shim/browser.ts`, +26 lines; suite still 52/52 green):
+
+- **`storage.<area>.onChanged` was absent entirely.** The reader never subscribed; `core/popup.ts`
+  does, and died on an undefined `addListener` before rendering anything. Now fires Chrome's
+  `{ key: { oldValue, newValue } }` shape, and only reads old values when a listener exists so it adds
+  no bridge round-trips.
+- **`runtime.onUpdateAvailable` was absent.** It can never fire on Android, but upstream subscribes
+  unconditionally and an undefined member is a TypeError at boot.
+
+Still missing, both small: `browser.commands.getAll` (settings' Hotkeys section) and
+`getHighlighterMode` (needs the real content script — M4 territory).
+
+**Three findings that change what M2 must build:**
+
+1. **`navigator.clipboard.writeText` failed and upstream silently rerouted to `content=`.** The URI
+   above is the *fallback* path — whole note in the URI, no `&clipboard`. `tryClipboardWrite` catches
+   the failure and switches route without telling anyone, **which is exactly what D2 forbids**. Now
+   confirmed empirically rather than predicted. Fix: back `copyToClipboard` with Kotlin's
+   `ClipboardManager` (A2 proved that path) or make the fallback loud. *Caveat: the spike environment
+   lacked focus/user-gesture, so a real WebView may succeed — but the silent reroute is in the code
+   either way.*
+2. **The popup calls `window.close()` after a successful clip.** It killed the spike's browser tab
+   mid-test. In a WebView that surfaces as `WebChromeClient.onCloseWindow`; the app must dismiss the
+   UI WebView on it or be left with a dead sheet.
+3. **Defuddle scores partly on layout.** A `display:none` frame extracts **0 words**; the same frame
+   off-screen but laid out extracts **1631**. Mostly a harness lesson — it cost an hour here — but it
+   bites for real if any WebView ever hosts a page without layout.
+
+**What the spike did *not* prove, stated plainly.** It ran on desktop Chromium, not Android. The
+`WebViewAssetLoader` origin, the real cross-WebView `sendMessageToTab` hop (faked here with a
+same-origin iframe), CSP behaviour on a device, and bundle size (the spike's 11 MB is unminified with
+inline sourcemaps) are all still open. The page was a saved fixture, not a live site. **M2.1 is where
+those get answered.**
+
+
 ## 3. Ground truth: upstream integration points
 
 Verified against the pinned commit on 2026-08-30 so future sessions have receipts without re-fetching.
@@ -349,18 +420,32 @@ improvise:
 
 ## 4. Architecture recap and repository layout
 
+**Restructured by D31 (2026-09-01).** The app is a mini-browser hosting upstream's extension, not a
+native app borrowing pieces of it. Two WebViews, mirroring the extension's own split between a content
+script and its privileged pages.
+
 ```text
 Share sheet (text/plain URL)
   → ShareReceiverActivity                       [M1]
-  → ReaderActivity (WebView: persistent cookies, Chrome-mobile UA)
-      → load URL → inject clipper-bundle.js     [M1]
-      → Reader.toggle(document)                 [M1 — screenshot 1]
-      → highlighter                             [M4]
-      → reader style settings                   [upstream's Aa panel — done at M1.3, §12]
-  → "Clip" → JS bridge → clip({...})            [M2]
-  → Compose clip sheet                          [M2/M3 — screenshot 3]
-  → SavePipeline: clipboard → obsidian://new → content= → report failure   [M2]
+  → ReaderActivity
+      ├─ PAGE WebView (persistent cookies, Chrome-mobile UA) — the "content script" world
+      │    → load URL → inject clipper-bundle.js          [M1]
+      │    → Reader.toggle(document)                      [M1 — screenshot 1; stays here, D32]
+      │    → content.ts message handlers                  [M2 — getPageContent, highlights]
+      │    → highlighter                                  [M4]
+      │    → reader style settings (upstream's Aa panel)  [done at M1.3, §12]
+      │
+      └─ UI WebView on WebViewAssetLoader origin — the "chrome-extension://" world
+           → popup.html / side-panel.html   upstream's clip sheet   [M2 — screenshot 3]
+           → settings.html                  upstream's settings + template editor  [M2/M3]
+           → save: upstream saveToObsidian() → window.open('obsidian://…')
+
+  Kotlin between them: message routing (browser.tabs / the background responder),
+  shouldOverrideUrlLoading → startActivity for obsidian://, first-run vault name.
 ```
+
+**What Kotlin does *not* do any more:** build the clip sheet, compose the note, build the
+`obsidian://` URI, or implement template matching. All four are upstream's, exercised in M2.0.
 
 **Shim strategy (refines the plan):** upstream already funnels every extension API through
 `webextension-polyfill`, and its own `build-api.mjs` swaps that one module for stubs. We do the same with
@@ -380,6 +465,12 @@ extension never needs them (§2, and Architecture & Rationale's *What we are not
 - A **pass-through Trusted Types default policy** is installed before the reader runs, or pages
   enforcing Trusted Types kill extraction outright (D21).
 
+**Both duties belong to the *page* WebView only (D31).** They exist because Android has no
+isolated-world API: an extension's content script is exempt from page CSP, and `evaluateJavascript`
+into the main world is not. On the UI WebView's own origin neither applies — `runtime.getURL` is a
+plain relative URL and the CSS is a real `<link>`. §8 carries an open proposal to strip CSP headers on
+the page WebView, which would retire both duties there too.
+
 ```text
 Marked (planned) where the file does not exist yet — everything else is on disk as of 2026-09-01.
 
@@ -391,9 +482,12 @@ android/                              Gradle project (Kotlin, Compose, minSdk 31
     java/…/reader/AndroidBridge.kt    the @JavascriptInterface object (token-gated — D27)
     java/…/reader/ClipperBundle.kt    the bundle asset + the JS snippets Kotlin drives it with
     java/…/ui/ClipperTheme.kt         Compose day/night theme (M5.2)
-    java/…/clip/ClipSheet.kt, ClipResult.kt                  (planned — M2)
-    java/…/save/SavePipeline.kt, ObsidianUri.kt              (planned — M2; SafWriter deferred, D18)
-    java/…/settings/                  vault name, prefs, template store   (planned — M2.4/M3)
+    java/…/ui/ClipperUiWebView.kt     UI WebView + WebViewAssetLoader      (planned — M2, D31)
+    java/…/bridge/MessageRouter.kt    routes runtime messages between the two WebViews (planned — M2)
+    java/…/settings/                  vault name + first-run prefs         (planned — M2.4)
+      (D31 removes four planned files before they were written: ClipSheet.kt, ClipResult.kt,
+       SavePipeline.kt, ObsidianUri.kt. All four are upstream's job now. SafWriter stays
+       deferred — D18.)
     res/values/themes.xml, res/values-night/themes.xml       the day/night pair (D29 context)
     assets/clipper-bundle.js          built artifact, committed — the PROD build (D28)
   app/src/test/…/share/SharedUrlTest.kt                      JVM unit tests
@@ -402,13 +496,18 @@ jsbridge/
   vitest.config.ts                    serves `virtual:assets`, aliases the polyfill to our shim, and
                                       pulls in upstream's two highlighter suites (M1.7)
   shim/browser.ts                     the webextension-polyfill replacement; bridge-backed storage
-  src/bundle-entry.ts                 bundle entry — exposes window.__clipper
+  src/bundle-entry.ts                 page-WebView bundle entry — exposes window.__clipper
+  src/ui-entry.ts                     UI-WebView entry: our background responder + upstream's
+                                      popup/settings pages        (planned — M2, D31)
+  src/background.ts                   our ~15-action responder; upstream's 1109-line background.ts
+                                      is NOT ported               (planned — M2, D31)
   src/vendor-globals.d.ts             ambients the vendored tree expects (chrome, the polyfill module)
   test/global-setup.ts                builds the bundle once, --prod, to .tmp/ (never the asset)
   test/extraction.test.ts             Defuddle over the fixtures, under jsdom
   test/sandbox.ts                     the linkedom + VM sandbox bundle/bridge tests share
   test/bundle.test.ts, bridge.test.ts, bootstrap.test.ts
   test/fixtures/*.html + README.md    captured pages, and what they cannot prove
+  spike/                              M2.0's throwaway extension-host harness (§2); delete at M2.2
   vendor/obsidian-clipper/            git submodule @ pin
 docs/plan/                            these documents
 LICENSE, .gitignore, .gitattributes
@@ -785,73 +884,103 @@ is merely believed to work.
 
 ## 8. M2 — Clip & Save (v1)
 
+**Rewritten 2026-09-01 under D31.** This section used to describe building a Compose clip sheet and
+porting the save recipe into Kotlin. Both were reimplementations of code the submodule already
+contains, and M2.0 proved that code runs on our shim (§2). The milestone is now about *hosting* it.
+The Kotlin here is plumbing; the clipper is upstream's.
+
 ### Tasks
 
-- **M2.1 — ClipperBridge.** JS side gathers `{ html: documentElement.outerHTML, url, schemaOrgData }`
-  and calls `clip()` (Layer A) with the live document as parser input, exactly per `ClipOptions` in
-  `src/api.ts`; result (`ClipResult`: note name, frontmatter, content, properties) crosses to Kotlin as
-  JSON via `AndroidBridge.postMessage`. Expose upstream's `sanitizeFileName` on the bundle so Kotlin
-  never reimplements it.
-- **M2.2 — Clip sheet (screenshot 3).** Compose `ModalBottomSheet`: template dropdown (default-only
-  until M3), editable note name, editable typed properties list (text/list/date icons per screenshot),
-  editable body (D10), folder field (defaulted from settings), "Add to Obsidian" button. Vault label
-  from settings (D9).
-- **M2.3 — SavePipeline.** Kotlin port of the §3 save recipe, in order: (1) compose
-  `frontmatter + content`; (2) `ClipboardManager.setPrimaryClip` (plain, not sensitive-flagged);
-  (3) build `obsidian://new` URI — `file` = folder + sanitized name, behavior flags, `vault`, optional
-  `silent`, bare `&clipboard` + short-error `content=`; (4) `startActivity`. Fallback: full
-  `content=` when clipboard mode is off/failed. No size threshold — A3 found no practical ceiling and
-  the oversized case throws catchably, so try and catch rather than pre-checking a magic number. If
-  that catch fires, surface the failure to Johan (D2); do not save by another route.
+- **M2.1 — UI WebView on our own origin.** A second WebView served by `WebViewAssetLoader` from app
+  assets, hosting upstream's `popup.html` / `side-panel.html`. This is the `chrome-extension://`
+  analogue: our origin, our CSP, so nothing a page sends can refuse our stylesheets or scripts.
+  `build.mjs` grows entries for the UI pages beside the existing page bundle (upstream's own
+  `webpack.config.js` already declares them, so the entry list is a transcription). Add `androidx.webkit`
+  — not currently a dependency — for `WebViewAssetLoader`.
+- **M2.2 — Background responder + message routing.** Our own small module answering the ~15 actions the
+  clip and settings paths send (`getActiveTab`, `getTabInfo`, `sendMessageToTab`, `openObsidianUrl`,
+  `openOptionsPage`, `fetchProxy`, the fire-and-forget notifications). **Upstream's `background.ts` is
+  not ported — D31.** `browser.tabs` is backed by the single page WebView. Kotlin routes
+  `sendMessageToTab` across the two WebViews; M2.0 faked this hop with a same-origin iframe, so this is
+  the first place the spike's result is genuinely re-tested.
+- **M2.3 — Save, via upstream.** `saveToObsidian()` builds the URI; `openObsidianUrl` reaches
+  `window.open('obsidian://…')`; `ReaderWebViewClient.shouldOverrideUrlLoading` (which does not exist
+  yet) catches non-`http(s)` schemes and fires `startActivity`. No `ObsidianUri.kt`, no `SavePipeline.kt`.
+  Two things M2.0 found that this task owns:
+  - **Back `copyToClipboard` with Kotlin's `ClipboardManager`, or make its failure loud.** Upstream's
+    `tryClipboardWrite` silently reroutes to a full `content=` URI when the clipboard write fails —
+    D2 forbids exactly that. Measured in the spike, not hypothesised.
+  - **Handle `onCloseWindow`.** Upstream's popup calls `window.close()` after a successful clip.
+    Dismiss the UI WebView on it, or the sheet is left dead on screen.
+  Behaviour flags are executed as written (D30) — upstream already does this; do not add a prompt.
+  A3's landmine still stands: **note content must never enter saved instance state**, at any size.
+- **M2.4 — First-run setup.** The one genuinely app-level screen: vault name (must match Obsidian's
+  exactly) and default folder. *Upstream's `settings.html` already has a Vaults field and a default-folder
+  setting, so this is a first-run convenience over upstream's store, not a parallel one.* `SafWriter`
+  and the tree-URI plumbing stay deferred (D18).
+- **M2.5 — Bookmark-only fallback (D13).** **The one clip feature upstream does not have** — verified,
+  zero hits for "bookmark" in `src/`. When extraction yields nothing usable, offer a one-tap bookmark
+  clip: frontmatter (title, source, created, tags) + URL, no body. **Trigger on empty *text*, never on
+  an empty content string** — M1.7's Instagram fixture returns markup with no readable character.
+- **M2.6 — Sweep the surfaces we do not want.** Upstream's popup ships eight actions; three go, using
+  M1.5's existing `data-clipper-unbuilt` mechanism: `embedded-mode` (toggles popup-vs-iframe; we have
+  only one context), `reader-mode` (duplicates the shell bar's toggle — two controls for one state
+  will eventually disagree), and `interpreter` (fully built, needs an API key and paid calls; it is
+  `display:none` until enabled, so it costs nothing to carry switched off). **Everything else stays** —
+  `show-variables`, `saveFile`, `share`, `copyToClipboard`, and the settings link.
+- **M2.7 — Shim gaps.** `browser.commands.getAll` (settings' Hotkeys section) and `getHighlighterMode`.
+  `storage.onChanged` and `runtime.onUpdateAvailable` were already fixed during M2.0.
 
-  **Behaviour flags are executed as written — settled → D30 (2026-09-01).** A template carrying
-  `overwrite=true` replaces the existing note in place: no existence check, no confirmation — and
-  the same respect for every other flag. Do not add a prompt here.
-- **M2.4 — Setup screen.** First-run setup: vault name (typed, must match Obsidian's vault name
-  exactly), default folder ("Clippings"), silent-open toggle.
-  *`SafWriter` and the `ACTION_OPEN_DOCUMENT_TREE` / `takePersistableUriPermission` plumbing are
-  deferred per D18* — with no SAF save path there is nothing to write. If the `content=` ceiling ever
-  becomes a real annoyance, this is where the writer would go back in.
-- **M2.5 — Bookmark-only fallback (D13).** When extraction yields nothing usable, offer a one-tap
-  bookmark clip: frontmatter (title, source, created, tags) + URL, no body. Also reachable explicitly
-  from the reader menu ("Clip as bookmark").
-- **M2.6 — Fixtures for clip output.** Extend M1.7: assert full `clip()` output (frontmatter + body)
-  against expected `.md` files per fixture.
+### Open, not decided
+
+- **CSP stripping on the page WebView.** Intercept the main document in `shouldInterceptRequest`, refetch
+  it, and return it without `Content-Security-Policy` headers. This is as close to an extension's
+  isolated world as Android allows: it would make D20 and D21 belt-and-braces instead of load-bearing,
+  and it is the **only** known fix for `flatten-shadow-dom.js` being refused by GitHub's `script-src`
+  (G0/B3). Cost: we own redirects, content-encoding, and cookie parity between OkHttp and
+  `CookieManager` — and cookies are already an unticked M1 box. **Do this after M2.1–M2.3 land; they are
+  independent.**
 
 ### Acceptance
 
+- [ ] Upstream's clip sheet opens over a live page in the app and populates from that page's extraction
+  (not a fixture — M2.0 only proved the fixture case).
 - [ ] Article, YouTube page, and extraction-hostile page all land in the vault correctly (the last as a
   bookmark note).
 - [ ] Note name, folder, properties, and body edits in the sheet are reflected in the saved note.
 - [ ] Re-clipping the same URL respects the template behavior (A4 semantics); a template with
   `overwrite=true` replaces the note in place, unprompted (D30).
-- [ ] A very large note (>512 KB) saves via the clipboard path; with clipboard artificially disabled
-  the `content=` path reports a clear failure rather than saving silently or truncating (D2).
+- [ ] A very large note (>512 KB) saves via the clipboard path; with clipboard artificially disabled the
+  failure is **reported**, not silently rerouted to `content=` (D2 — M2.0 measured the silent reroute).
+- [ ] The sheet closes cleanly after a save (`onCloseWindow`) and the app returns to the page.
 - [ ] Backgrounding the app mid-clip with a large note does not crash it — note content stays out of
   saved instance state (G0 landmine).
-- [ ] Vault automations fire (A5 re-check with real clips).
 - [ ] Second clip started from the share sheet while Obsidian is foregrounded works (round-trip focus).
-- [ ] Carried from M1 through G1 (§7): sharing from Chrome's, Firefox's and the YouTube app's own
-  share sheets; the YouTube transcript in reader on device; cookies surviving a relaunch against a
-  real login. Observe opportunistically during M2's device work.
+- [ ] `settings.html` opens from the sheet and its Reader/Properties sections work against the shim.
+- [ ] Carried from M1 through G1 (§7): sharing from Chrome's, Firefox's and the YouTube app's own share
+  sheets; the YouTube transcript in reader on device; cookies surviving a relaunch against a real login.
+  Observe opportunistically during M2's device work.
 
 ## 9. M3 — Templates (v1)
 
+**Rewritten 2026-09-01 under D31 — most of this milestone arrived with M2.** M2.0 brought up upstream's
+template editor under our shim: template name, triggers, the Behavior dropdown, `{{title}}` note-name
+formatting, and JSON Export/Import, all working (§2). `core/popup.ts` already imports
+`findMatchingTemplate`, `template-manager`, `template-compiler` and `property-types-manager`, and the
+spike watched the filter chain `{{author|split:", "|wikilink|join}}` render as `[[Steph Ango]]` from a
+real page. **There is no template store, no importer, no management UI and no editor to build.**
+
 ### Tasks
 
-- **M3.1 — Template store.** Templates as JSON files in app storage, schema = upstream `Template` type
-  (same shape the desktop clipper exports). Bundle a default template replicating screenshot 3's
-  properties (title, source, author, published, created, description, tags).
-- **M3.2 — Import.** SAF file picker (multi-select) + paste-JSON, validating against the `Template`
-  shape. Reuse upstream import/validation code if the bundle can expose it; otherwise validate
-  minimally and let `clip()` be the real arbiter. Templates from `kepano/clipper-templates` import the
-  same way (they're the same JSON).
-- **M3.3 — Auto-selection.** On page load, run `matchTemplate(templates, url, schemaOrgData)` and
-  preselect in the clip sheet; manual override via the dropdown always wins.
-- **M3.4 — Management UI.** Settings screen: list, set default, delete, read-only inspect. No editor
-  (D16 — author on desktop, export, import here).
-- **M3.5 — Daily-note behaviors.** `append-daily`/`prepend-daily` route to `obsidian://daily?` per §3;
-  test with a template that uses them.
+- **M3.1 — Verify auto-selection on device.** `matchTemplate` runs inside upstream's popup already;
+  confirm a trigger URL preselects the right template on the Find N6 and that the manual override wins.
+- **M3.2 — Import path on Android.** Upstream's `showTemplateImportModal` expects a desktop file picker.
+  Check what it does in a WebView; if it needs help, wire SAF to it — **do not** write a parallel
+  importer. Paste-JSON already works and may be enough.
+- **M3.3 — Daily-note behaviors.** `append-daily`/`prepend-daily` route to `obsidian://daily?` per §3.
+  Upstream implements this; test it with a template that uses it.
+- **M3.4 — Bundle Johan's defaults.** Ship his real templates as the initial store so a fresh install is
+  useful before any import.
 
 ### Acceptance
 
@@ -859,6 +988,7 @@ is merely believed to work.
 - [ ] A YouTube link picks the video template (if imported); unknown sites fall back to default.
 - [ ] Template filters/variables produce identical output to desktop for one shared test page (compare
   the two notes).
+- [ ] Editing a template in the app's own settings page persists across a cold relaunch.
 - [ ] **v1 is now feature-complete → §10.**
 
 ## 10. v1 release checklist — includes GATE G2
@@ -879,7 +1009,10 @@ is merely believed to work.
   WebView (they're already in the bundle and their upstream tests already run — M1.7).
   `highlighter.css` delivery is already handled — inlined since G0 per D20, verified on a CSP-strict
   page — so M4 does not need to revisit it.
-- **M4.2** Storage shim policy per D8: highlights live in-memory per reader session, cleared on exit.
+- **M4.2** ~~Storage shim policy per D8: highlights live in-memory per reader session.~~ **Reconsider at
+  M4's start (D31/D8, 2026-09-01):** upstream's `highlights-manager.ts` already implements persistence
+  and the storage shim already backs it, so the in-session rule now costs more to enforce than to drop.
+  The pen itself is one `data-clipper-unbuilt` attribute away in `bundle-entry.ts`.
 - **M4.3** Wire highlights into `clip()` so the template's highlights variable populates the note;
   verify against a fixture.
 - **M4.4** Acceptance: highlight three passages on the Find N6 (touch selection, both displays), clip,
@@ -941,14 +1074,17 @@ Node (committed bundle); touching `jsbridge/` requires running `npm run build` a
 asset in the same commit — `npm run verify` is the honesty check.
 
 **Submodule bump procedure.** (1) Read upstream diff since the pin, especially `src/utils/reader*`,
-`highlighter*`, `api.ts`, `obsidian-note-creator.ts`, `build-api.mjs`; (2) bump the pinned commit;
-(3) `just jsbuild`; (4) `just jstest` — the fixture snapshots in `test/extraction.test.ts` catch
-extraction drift, and upstream's own `highlighter.test.ts` / `highlighter-overlays.test.ts` run in our
-harness against *our* shim, so they catch Layer B drift (M1.7); (5) manual smoke: share → read → clip
-on device — **this step is not optional**, because the fixtures are `curl` captures and cannot see
-anything a page's script builds (github's shadow DOM is absent from them entirely; see
-`test/fixtures/README.md`); (6) commit submodule ref + rebuilt bundle together, noting the new pin in
-§Pinned upstream.
+`highlighter*`, `api.ts`, `obsidian-note-creator.ts`, `build-api.mjs`, **and — since D31 —
+`core/popup.ts`, `core/settings.ts`, `managers/template-*`, `content.ts` and `background.ts`'s message
+contract**; (2) bump the pinned commit; (3) `just jsbuild`; (4) `just jstest` — this proves *our*
+shim still answers what upstream asks of it (D14), and upstream's own `highlighter.test.ts` /
+`highlighter-overlays.test.ts` run against our shim, catching Layer B drift; (5) manual smoke on
+device: share → read → **open the clip sheet → open settings → edit a template** → clip. **This step
+is not optional and got longer under D31**: nothing automated covers upstream's UI, and the fixtures
+are `curl` captures that cannot see anything a page's script builds (github's shadow DOM is absent
+from them entirely; see `test/fixtures/README.md`). A new action appearing in upstream's background
+contract shows up here as a `[bg] UNHANDLED action:` warning, so watch the log during the smoke pass;
+(6) commit submodule ref + rebuilt bundle together, noting the new pin in §Pinned upstream.
 
 Two contracts a bump can break silently, both guarded by tests rather than by reading:
 `test/bridge.test.ts` is the executable spec for `AndroidBridge.kt`, and `bundle.test.ts` asserts the
@@ -983,12 +1119,13 @@ check ColorOS's "recommended sharing" settings first.
 |---|---|---|
 | Android/ColorOS blocks the clipboard handoff to Obsidian | Fallback to `content=` (A1/A2 passed at G0, so not currently a live risk) | G0 |
 | Vendored reader breaks or fights the WebView | Timeboxed spike before any investment; native-lite fallback named at G0 | G0/G1 |
-| Upstream drift breaks extraction or highlighter on bump | Pinned submodule; fixture snapshots + upstream tests in our harness; §14 procedure | M1.7 onward |
+| Upstream drift breaks extraction or highlighter on bump | Pinned submodule; upstream's own tests in our harness; §14 procedure. **Extraction-quality snapshots dropped (D14, 2026-09-01)** — defuddle's output legitimately shifts per release and shows up as a template property coming up empty, which is the nature of web clipping rather than a regression to pin | Accepted |
+| **Upstream drift breaks the clipper *UI* on bump (D31)** | Nothing automated covers this — accepted with eyes open. Mitigation is the pin itself plus a manual pass over the clip sheet and settings page after any bump; §14's procedure gains that step | — |
 | Sites block the WebView UA or bot-detect | Chrome-mobile UA (M1.2), cookie persistence, bookmark fallback (M2.5). **No browsing/login UI to fall back on — D23**, so a hard-blocked site is accepted as a bookmark clip | M2 |
 | SPA/JS-heavy pages extract poorly | Tap the reader once the page has settled; recover a too-early tap with Reload → wait → tap again (D25/D26). Bookmark fallback for pages that never extract | M1/M2 |
 | Intent URI size limits truncate `content=` saves | A3 measured no truncation up to 512 KB; oversized fails loudly, never silently | M0 |
 | Windows dev friction (paths, EOL, drivers) | §14 parity rules, P0.1 gitattributes, P0.3 driver note | Phase 0 |
-| Obsidian changes `obsidian://` behavior | Recipe isolated in `ObsidianUri.kt` + §3 documents the contract. Accepted single point of failure per D18 — notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss | — |
+| Obsidian changes `obsidian://` behavior | Recipe lives in upstream's `obsidian-note-creator.ts` (D31 — no `ObsidianUri.kt` any more) + §3 documents the contract. Accepted single point of failure per D18 — notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss | — |
 
 ## 16. UI inventory — every visible element has one owner
 
@@ -998,14 +1135,15 @@ check ColorOS's "recommended sharing" settings first.
 | Shell bottom bar — `Clip` (D25) | M2 |
 | Reader typography, layout, TOC button (1) | M1 |
 | Highlighter pen button (1) | M4 |
-| Copy/save popup button (1) | Renders M1; copy action M2 (Kotlin clipboard); save-as-file M6 |
+| Copy/save popup button (1) | Renders M1; both actions are upstream's under D31 — M2 only backs `copyToClipboard` with Kotlin's ClipboardManager (§2's silent-fallback finding) |
 | Aa reader-style button (1) + the style sheet it opens (2) | **Done at M1.3** — both are upstream's own panel, persisted through the bridge. Nothing left in §12's M5 but the M5.2 theme check |
-| Clipper button — gem replaced (1) → clip sheet (3) | M2 |
-| Template dropdown w/ auto-select (3) | M3 |
-| Properties editor, body editor, note name (3) | M2 |
-| Vault selector (3) | Settings value (D9), shown in sheet M2 |
-| Folder field (3) | M2 |
-| "Add to Obsidian" (3) | M2 |
+| Clipper button — gem replaced (1) → clip sheet (3) | M2 — opens upstream's `popup.html` (D31) |
+| Template dropdown w/ auto-select (3) | **Upstream's**, working since M2.0; M3 verifies on device |
+| Properties editor, body editor, note name (3) | **Upstream's**, working since M2.0 (D31) |
+| Vault selector (3) | **Upstream's** — `settings.html` has a Vaults field; D9 still means one vault |
+| Folder field (3) | **Upstream's**, working since M2.0 |
+| "Add to Obsidian" (3) | **Upstream's**; Kotlin only catches the `obsidian://` intent (M2.3) |
+| Settings page + template editor (no screenshot) | **Upstream's** `settings.html` — retires D16 |
 
 ## 17. Licensing & branding
 

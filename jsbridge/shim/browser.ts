@@ -122,23 +122,46 @@ function storageArea(area: 'local' | 'sync' | 'session') {
     return out;
   };
 
+  // Per-area change events. The reader never subscribed, so this went unnoticed until the
+  // extension's own UI pages did (`storage.local.onChanged` in core/popup.ts) and died on an
+  // undefined `addListener`. Chrome fires these with a `{ [key]: { oldValue, newValue } }` map.
+  const onChanged = eventSource();
+
+  const announce = (changes: Record<string, { oldValue?: unknown; newValue?: unknown }>) => {
+    if (onChanged.listeners.length === 0) return;
+    for (const listener of onChanged.listeners) listener(changes, area, () => {});
+  };
+
   return {
+    onChanged,
     get: async (keys?: string | string[] | Record<string, unknown> | null) => read(keys),
     set: async (items: Record<string, unknown>) => {
+      const changes: Record<string, { oldValue?: unknown; newValue?: unknown }> = {};
       for (const [k, v] of Object.entries(items)) {
+        // Only read the old value when someone is listening: every read is a bridge round trip.
+        if (onChanged.listeners.length > 0) changes[k] = { oldValue: getOne(k), newValue: v };
         if (backing) backing.bridge.setItem(backing.token, area, k, JSON.stringify(v));
         else store.set(k, v);
       }
+      announce(changes);
     },
     remove: async (keys: string | string[]) => {
+      const changes: Record<string, { oldValue?: unknown; newValue?: unknown }> = {};
       for (const k of Array.isArray(keys) ? keys : [keys]) {
+        if (onChanged.listeners.length > 0) changes[k] = { oldValue: getOne(k) };
         if (backing) backing.bridge.removeItem(backing.token, area, k);
         else store.delete(k);
       }
+      announce(changes);
     },
     clear: async () => {
+      const changes: Record<string, { oldValue?: unknown; newValue?: unknown }> = {};
+      if (onChanged.listeners.length > 0) {
+        for (const k of allKeys()) changes[k] = { oldValue: getOne(k) };
+      }
       if (backing) backing.bridge.clear(backing.token, area);
       else store.clear();
+      announce(changes);
     },
   };
 }
@@ -238,6 +261,9 @@ const runtime = {
   sendMessage,
   onMessage,
   onInstalled: eventSource(),
+  // Never fires here — an Android app has no extension update channel — but upstream's UI
+  // subscribes unconditionally and an undefined member is a TypeError at boot.
+  onUpdateAvailable: eventSource(),
   connect: () => ({
     postMessage: () => {},
     disconnect: () => {},
