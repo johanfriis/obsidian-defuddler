@@ -585,8 +585,11 @@ hand-written reader.
   transcript absent at a 6 s settle and present at 15 s. Realistic tap latency — see the page, find
   the button, press it — is roughly 2–5 s, i.e. *below* the value already known to fail. So a
   user-triggered toggle buys less time than it appears to, and on a fast tap YouTube will still
-  extract without its transcript. (The exact threshold between 6 s and 15 s was not narrowed; the
-  device was disconnected before it could be measured. Worth pinning down during M1.6.)
+  extract without its transcript. **The exact threshold between 6 s and 15 s is deliberately left
+  unmeasured** (Johan, 2026-09-01): it is a function of network conditions, device power and YouTube's
+  own latency, so a number measured on one setup would not generalise and would invite building
+  against it. Do not re-propose narrowing it — the 6 s/15 s bracket is all the precision this needs.
+  Build re-extract instead.
 
   **What actually carries the case is re-extract**, so build it properly rather than as a hidden
   fallback: an action available *inside* reader mode that re-runs extraction against the current DOM
