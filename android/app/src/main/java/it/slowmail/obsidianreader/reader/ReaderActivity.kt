@@ -42,8 +42,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import it.slowmail.obsidianreader.BuildConfig
 import it.slowmail.obsidianreader.R
+import it.slowmail.obsidianreader.ui.ClipperTheme
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -91,7 +94,7 @@ class ReaderActivity : ComponentActivity() {
         CookieManager.getInstance().setAcceptCookie(true)
 
         setContent {
-            MaterialTheme {
+            ClipperTheme {
                 Surface {
                     ReaderScreen(
                         url = url,
@@ -210,6 +213,17 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
                             settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
+                            // Without this a WebView reports `prefers-color-scheme: light` no
+                            // matter the system setting, so the reader's own dark themes never
+                            // engage (M5.2). With it, and the app on a dark theme, WebView honours
+                            // a page's own dark support first and only falls back to darkening a
+                            // page algorithmically when it has none — which is the behaviour M5.2
+                            // wanted: the reader owns its colours, and a raw page that has no dark
+                            // mode of its own still does not flash white.
+                            if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+                                WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
+                            }
+
                             // M1.3. Attached before the first load, since the interface only
                             // applies to pages loaded after it is added. WebView calls in on its
                             // own thread, so the handler hops back to main before touching state.
@@ -244,6 +258,18 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
                                     }
                                 },
                                 onFailed = { description -> loadError = description },
+                                onRendererGone = { crashed ->
+                                    // The WebView is dead; the Compose state around it is not.
+                                    // Say which of the two happened, because they mean different
+                                    // things to whoever reads the report.
+                                    readerActive = false
+                                    loadError = if (crashed) {
+                                        context.getString(R.string.renderer_crashed)
+                                    } else {
+                                        context.getString(R.string.renderer_reclaimed)
+                                    }
+                                    android.util.Log.w("Reader", "render process gone, crashed=$crashed")
+                                },
                             )
                             webView = this
                             loadUrl(url)

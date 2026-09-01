@@ -579,6 +579,15 @@ hand-written reader.
   `text/plain`. Extract the first `http(s)` URL from `EXTRA_TEXT` (apps commonly share `"Title\nURL"`;
   the YouTube app shares title + short link). Keep `EXTRA_SUBJECT` as a title hint. No URL found →
   polite toast, finish.
+
+  **Trap, hit and fixed on 2026-09-01 — do not re-introduce it.** `ShareReceiverActivity` is the
+  *root* of the task a share creates, so `android:excludeFromRecents` on it governs the whole task,
+  `ReaderActivity` included. The reader then disappears from the app switcher the moment Johan
+  switches apps, and cannot be returned to — the launcher icon opens `MainActivity` in a different
+  task, so it presents exactly as *"the clipper closes when I switch apps"*. It was added to keep
+  the invisible trampoline out of Recents; `android:noHistory` already does that, and is what
+  remains. Diagnosed from a full logcat capture: 19 `isExcludeFromRecents … res:true` verdicts, and
+  the app process still alive throughout — **nothing crashed**.
 - **M1.2 — ReaderActivity + WebView config.** JS on, DOM storage on; `CookieManager`: accept cookies +
   third-party for the WebView, `flush()` in `onPause` (login sessions survive relaunch);
   User-Agent = current Chrome-mobile string with no `; wv` token (constant, overridable in settings
@@ -686,27 +695,51 @@ hand-written reader.
     logged-out client gives Defuddle a title, `wordCount` 0, and ~22 KB of markup containing not one
     readable character. **So M2.5's bookmark fallback must trigger on empty *text*, never on an empty
     content string** — that check would not fire here.
-- **M1.8 — Foldable pass. NOT DONE — needs Johan and the phone in hand.** Reader on cover screen, on
-  inner screen, and across a fold/unfold mid-article. `ReaderActivity` declares `configChanges` for
-  `screenSize|screenLayout|smallestScreenSize|orientation|density|uiMode`, so the activity should not
-  be recreated at all and the WebView (with the rendered reader) should survive a fold — that is the
-  claim to falsify, not to assume.
-  - **Folding is physical, so this cannot be driven over adb.** Everything else in M1 was verified on
-    device; this is the one item that needs hands.
-  - **M5.2's theme check folds in here** (§12): the reader in dark mode, and whether Android's
-    algorithmic darkening interferes with colours the reader owns. Attempted on 2026-09-01 via
-    `adb shell cmd uimode night yes`; the device dozed and then locked mid-run, so **it was not
-    observed** and the setting was restored to `auto`. Unverified, not known broken.
+- **M1.8 — Foldable pass. DONE (2026-09-01), by Johan on the device.** Fold and unfold mid-article
+  "worked perfectly": the `configChanges` declaration (`screenSize|screenLayout|smallestScreenSize|
+  orientation|density|uiMode`) keeps the activity from being recreated, so the WebView and the
+  rendered reader survive the fold intact.
+
+  The pass turned up two defects that had nothing to do with folding, both since fixed:
+  - **Dark mode had no effect on the app at all** — and it was three independent omissions from
+    M1.2, not one: `themes.xml` hardcoded `Theme.Material.Light` (which also sets
+    `android:isLightTheme=true`, the flag WebView reads to decide whether a page may go dark); both
+    activities called bare `MaterialTheme { }`, which silently means `lightColorScheme()` always;
+    and the WebView never opted into algorithmic darkening, so it reported
+    `prefers-color-scheme: light` regardless of the system. Fixed with a `values-night` theme, a
+    `ClipperTheme` composable, and `WebSettingsCompat.setAlgorithmicDarkeningAllowed`. **M5.2's
+    concern turns out to be handled by the platform**: with darkening allowed, WebView honours a
+    page's *own* dark support first and only darkens algorithmically where a page has none — so the
+    reader keeps the colours it owns. Verified on device.
+  - **"The clipper closes when I switch apps"** — see the M1.1 trap above. Not a crash: the process
+    was still alive; the task was merely excluded from Recents and therefore unreachable.
+
+  Also added while chasing that one, and worth keeping although it was **not** the cause:
+  `onRenderProcessGone` is now handled. A client that does not override it lets the framework kill
+  the *app* process when the renderer dies, which looks exactly like a crash and leaves no Java
+  stack trace. It now shows the error pane with Reload instead.
 
 ### Acceptance
 
+Status as of 2026-09-01. Boxes are ticked only where the thing was actually observed, not where it
+is merely believed to work.
+
 - [ ] Sharing from Chrome, Firefox, and the YouTube app opens the reader on the shared page.
-- [ ] Reader matches screenshot 1: typography, TOC button works, toolbar present (unbuilt buttons
-  handled per M1.6), no Obsidian gem icon.
+  *Partly: the share path is exercised constantly via `just share` (a real `ACTION_SEND` intent), and
+  Johan has shared from a browser. Not yet tried from all three apps' own share sheets — ColorOS
+  ordering means the app may need pinning in the sheet first (§14).*
+- [x] Reader matches screenshot 1: typography, TOC button works, toolbar present (unbuilt buttons
+  handled per M1.6), no Obsidian gem icon. *Verified on device; the toolbar is TOC + `Aa`, the rest
+  hidden until their milestones (M1.5).*
 - [ ] YouTube watch page shows the transcript in reader when available (upstream `reader-transcript.ts`).
+  *Guarded by a fixture (M1.7) but **not re-verified on device** since M0's B3 run.*
 - [ ] Cookies persist across app relaunches (visit a login-walled site, relaunch, still signed in).
-- [ ] Fixture suite green; `npm run verify` proves the committed bundle matches sources.
-- [ ] Foldable pass (M1.8) holds.
+  *The plumbing is in (`setAcceptCookie`, third-party cookies, `flush()` in `onPause`) but has never
+  been exercised against a real login.*
+- [x] Fixture suite green; `npm run verify` proves the committed bundle matches sources. *50 tests,
+  6 files; `jsverify` exits 0.*
+- [x] Foldable pass (M1.8) holds. *Johan, 2026-09-01: fold/unfold mid-article works perfectly. The
+  two defects the pass surfaced were unrelated to folding and are fixed — see M1.8.*
 - [ ] **GATE G1:** Johan reads a few real articles and rules the reader good enough to build on.
 
 ## 8. M2 — Clip & Save (v1)
@@ -831,10 +864,13 @@ it is a check for a defect rather than anything to build.**
   should work once `storage` round-trips through SharedPreferences.~~ **Done at M1.3**, exactly as
   predicted: the sheet is upstream's, and it started persisting the moment storage reached
   SharedPreferences. Font size, width, spacing and theme all apply and survive a cold relaunch.
-- **M5.2** Theme interplay: reader dark/light/auto vs. the app's own theme and Android's algorithmic
-  darkening (keep darkening off for the reader WebView; the reader owns its colors). **The only open
-  item in M5** — M1 has been exercised in light mode only, so this is unverified rather than known
-  broken. Fold into M1.8's device pass rather than carrying a milestone for it.
+- ~~**M5.2** Theme interplay: reader dark/light/auto vs. the app's own theme and Android's
+  algorithmic darkening (keep darkening off for the reader WebView; the reader owns its colors).~~
+  **Done at M1.8 (2026-09-01).** Dark mode did nothing at all until then — three omissions, listed
+  under M1.8. The original instinct to keep darkening *off* turned out to be the wrong lever:
+  `setAlgorithmicDarkeningAllowed(true)` is what lets the reader's own dark CSS engage, and WebView
+  only darkens algorithmically where a page has no dark support of its own. **M5 is now closed
+  entirely.**
 - **M5.3** Acceptance: set a non-default style, kill the app, share a new link — style stuck.
   **Met on 2026-09-01** (fontSize 16 → 18, verified across a force-stop).
 

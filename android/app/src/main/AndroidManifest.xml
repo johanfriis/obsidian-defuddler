@@ -22,11 +22,18 @@
             </intent-filter>
         </activity>
 
-        <!-- M1.1 — the real entry point. No UI: it resolves the URL and hands off. -->
+        <!-- M1.1 — the real entry point. No UI: it resolves the URL and hands off.
+
+             `noHistory` drops this invisible activity from the back stack the moment it finishes.
+             There is deliberately NO `excludeFromRecents` here: this activity is the *root* of the
+             task the share creates, so that attribute governs the whole task, taking ReaderActivity
+             with it. The reader then vanishes from the app switcher and cannot be returned to,
+             which reads as "the app closed when I switched apps" even though the process is still
+             alive. Measured on the Find N6, 2026-09-01. Do not re-add it to keep the trampoline out
+             of Recents — `noHistory` already does that job. -->
         <activity
             android:name=".share.ShareReceiverActivity"
             android:exported="true"
-            android:excludeFromRecents="true"
             android:noHistory="true"
             android:theme="@style/Theme.Trampoline">
             <intent-filter>

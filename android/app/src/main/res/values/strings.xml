@@ -13,4 +13,8 @@
 
     <string name="reader_failed">The reader couldn\'t render this page.</string>
     <string name="load_failed_title">Couldn\'t load the page</string>
+
+    <!-- The WebView's renderer died. Without onRenderProcessGone handling this killed the app. -->
+    <string name="renderer_crashed">The page renderer crashed. Reload to start it again.</string>
+    <string name="renderer_reclaimed">Android reclaimed the page while the app was in the background. Reload to bring it back.</string>
 </resources>

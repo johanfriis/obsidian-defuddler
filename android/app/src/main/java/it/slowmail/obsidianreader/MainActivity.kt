@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import it.slowmail.obsidianreader.ui.ClipperTheme
 
 /**
  * The launcher screen — and deliberately almost nothing (playbook M1.0).
@@ -29,7 +30,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            ClipperTheme {
                 Surface {
                     HomeScreen()
                 }
@@ -54,5 +55,5 @@ private fun HomeScreen() {
 @Preview(showBackground = true)
 @Composable
 private fun HomeScreenPreview() {
-    MaterialTheme { Surface { HomeScreen() } }
+    ClipperTheme { Surface { HomeScreen() } }
 }
