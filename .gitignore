@@ -29,6 +29,3 @@ jsbridge/build-meta.json
 
 # Scratch bundle the jsbridge tests build into (never the committed asset).
 jsbridge/.tmp/
-
-# M2.0 spike build output (the harness in jsbridge/spike/ IS committed — see playbook §2).
-jsbridge/.spike-ui/

@@ -45,28 +45,47 @@ Bumping either pin follows the procedure in §14 — never casually.
 - A fresh implementation session should read §1 (decisions), §2 (gate outcomes), §3 (upstream ground
   truth), and the milestone it is executing. Architecture & Rationale is background reading; Problem &
   UI Reference is where every "screenshot N" reference resolves.
-- **Where things stand (2026-09-01): M0 and M1 are built; G0 and G1 are both CLOSED — passed. M2 was
-  re-planned the same day around D31 and the next thing that happens is M2.1.** Every M1 task
-  (M1.0–M1.8) is implemented and verified on the Find N6; G1 passed on Johan reading real articles on
-  the device (§2). Three M1 acceptance boxes carried through the gate honestly unticked — see §7, and
-  the carried-forward box in §8.
+- **Where things stand (end of 2026-09-01). M0, M1 and most of M2 are built; G0 and G1 are CLOSED —
+  passed. The happy path works on the Find N6 end to end:** share a link → the page opens → tap the
+  `Reader` FAB → tap the `Clip` FAB (or the reader toolbar's Obsidian button) → upstream's clip sheet
+  populates from the live page → *Add to Obsidian* → the note lands in the vault with typed
+  properties and a markdown body, and the sheet closes itself. **That is v1's definition of done for
+  the happy path.** The highlighter works too (M2.7).
 
-  **Before writing any M2 code, read D31 — it is the largest decision in this document.** The app
-  hosts upstream's own extension UI instead of reimplementing it in Compose. That reverses what §8 and
-  §9 used to say, retires D16 and D27 outright, and narrows D14 and D20. The M2.0 spike that proved it
-  is in §2; its findings are load-bearing, especially the silent clipboard fallback and the popup's
-  `window.close()`.
+  **Read D31 first — it is the largest decision in this document, and everything since follows from
+  it.** The app *hosts upstream's extension* rather than reimplementing its UI: two WebViews, the
+  shim as the extension runtime, upstream's own popup, settings page and template editor. It reversed
+  what §8 and §9 used to say, retired D16 and D27, and narrowed D14 and D20. Then **D32** (the reader
+  stays in the page WebView) and **D33** (two mini FABs; no shell bar, no `Reload`, no setup screen).
 
-  Also read D25–D30. D26 (re-extract is not buildable; Reload is the recovery) and D29 (no algorithmic
-  darkening) overrule text recorded earlier the same day; D30 settles behaviour flags — executed as
-  written, unprompted. §2's G0 findings still correct several older assumptions.
+  **What is left, in the order I would take it — all of it is in §8's task list with detail:**
 
-  One constraint M2 inherits, earned rather than assumed: **the bookmark fallback must trigger on
-  empty *text*, not an empty content string** (M1.7's Instagram fixture). Upstream has no bookmark
-  feature at all — verified, zero hits in `src/` — so M2.5 is genuinely ours to build.
+  1. **M2.3's failure half.** The happy path is done; what is unproven is D2's promise that a failed
+     save is *reported*, never silently rerouted. Upstream's `tryClipboardWrite` does reroute
+     silently. On the device the clipboard path succeeds (§2), so this needs forcing.
+  2. **M2.7's two remaining gaps.** `browser.commands.getAll` (settings' Hotkeys section throws
+     without it), and the reader dropdown's `copyMarkdownToClipboard` / `saveMarkdownToFile`, both
+     visible and neither routed.
+  3. **M3** — mostly verification now, not building; the template editor already works (§9).
+  4. **M4.3** — the only real remainder of M4: wiring highlights into `clip()` so `{{highlights}}`
+     populates a note. D8's in-session rule is now a *choice*, not a saving; decide it here.
+  5. **Carried from M1 through G1** (§7, and the box in §8): the three apps' own share sheets, the
+     YouTube transcript on device, cookies against a real login. Observe opportunistically.
+
+  **Two open proposals, neither decided:** CSP stripping on the page WebView (§8's "Open, not
+  decided" — the only known fix for `flatten-shadow-dom.js` on GitHub), and confirming M2.5's skip
+  against the Instagram fixture.
+
+  **Traps this session paid for, all recorded where they bit:** upstream's content script ends its
+  listener with an unconditional `return true` and will swallow any message fed back to its own
+  document (M2.2); `window.obsidianReaderInitialized` has two owners, so whichever runs second
+  silently does nothing (M2.6); `AssetsPathHandler` appends the path *after* the registered prefix,
+  so mounting at `/ui/` 404s everything (M2.1); and Defuddle scores partly on layout, so a
+  `display:none` frame extracts zero words (§2).
 
   Read §5's status block for the `just`-based dev loop, which post-dates this playbook's original
-  text.
+  text. `just jstest`, `just jsverify`, `just jscheck` and `just test` are the four checks; all four
+  are green as of this commit (55 JS tests).
 - Expected effort: one milestone ≈ one to a few focused sessions. M0 is timeboxed to ~1 day.
 
 ## 1. Decisions log
@@ -318,11 +337,12 @@ ellipsizes.
 
 ### M2.0 / extension-host spike findings — 2026-09-01, build machine (desktop Chromium)
 
-Harness: `jsbridge/spike/` + `spike/build-ui.mjs` (throwaway, same convention as B3's
-`SpikeBActivity.kt`). It builds upstream's `popup.html`, `side-panel.html` and `settings.html` as if
-served from our own origin, with a fake background responder and an off-screen fixture frame standing
-in for the page WebView. **Run it with `node spike/build-ui.mjs --page <fixture>.html`, serve
-`.spike-ui/`, open `popup.html`.** This spike answered D31; delete it once M2.2 lands for real.
+Harness: `jsbridge/spike/` — throwaway, same convention as B3's `SpikeBActivity.kt`, and
+**deleted at M2.7 now that M2.1–M2.2 do the same thing for real on the device.** Read it at commit
+`bc016cc^` if the detail is ever needed. It built upstream's `popup.html`, `side-panel.html` and
+`settings.html` as if served from our own origin, with a fake background responder and an off-screen
+fixture frame standing in for the page WebView. Everything it proved is now proven by the app itself;
+keeping it would have left two ways to run upstream's UI, one of them a lie.
 
 - **Pass — upstream's UI runs on our shim with zero changes to upstream source.** The only edits are
   two lines of HTML rewriting (drop the extension's `browser-polyfill.min.js` tag) and 26 lines added
@@ -479,20 +499,27 @@ Marked (planned) where the file does not exist yet — everything else is on dis
 
 android/                              Gradle project (Kotlin, Compose, minSdk 31, targetSdk 36)
   app/src/main/
-    java/…/MainActivity.kt            launcher; a "share a link" screen that becomes M2.4's setup
+    java/…/MainActivity.kt            launcher: "share a link" + a door into settings (D33)
     java/…/share/ShareReceiverActivity.kt, SharedUrl.kt      (URL parsing is JVM-testable)
-    java/…/reader/ReaderActivity.kt, ReaderWebViewClient.kt
-    java/…/reader/AndroidBridge.kt    the @JavascriptInterface object (token-gated — D27)
+    java/…/reader/ReaderActivity.kt   the PAGE WebView, the two FABs, and the clip sheet's host
+    java/…/reader/ReaderWebViewClient.kt
+    java/…/reader/AndroidBridge.kt    the @JavascriptInterface object; both WebViews share it
     java/…/reader/ClipperBundle.kt    the bundle asset + the JS snippets Kotlin drives it with
+    java/…/clipper/ClipperUi.kt       the UI origin, its two page URLs, the obsidian:// intent
+    java/…/clipper/ClipSheet.kt       the bottom sheet hosting upstream's popup.html
+    java/…/clipper/SettingsActivity.kt  upstream's settings + template editor, from the launcher
+    java/…/clipper/MessageRouter.kt   carries request/response envelopes between the two WebViews
     java/…/ui/ClipperTheme.kt         Compose day/night theme (M5.2)
-    java/…/ui/ClipperUiWebView.kt     UI WebView + WebViewAssetLoader      (planned — M2, D31)
-    java/…/bridge/MessageRouter.kt    routes runtime messages between the two WebViews (planned — M2)
-    java/…/settings/                  vault name + first-run prefs         (planned — M2.4)
-      (D31 removes four planned files before they were written: ClipSheet.kt, ClipResult.kt,
-       SavePipeline.kt, ObsidianUri.kt. All four are upstream's job now. SafWriter stays
+      (D31 deleted four planned files before they were written: ClipResult.kt, SavePipeline.kt,
+       ObsidianUri.kt and a Compose clip sheet. Note composition, the URI and the template engine
+       are all upstream's. `ClipSheet.kt` survives as a *container* only — ~90 lines, no clipper
+       logic. There is no settings/ package: D33 deleted the setup screen. SafWriter stays
        deferred — D18.)
+    res/drawable/ic_reader.xml, ic_clip.xml                  the two FAB glyphs (D33)
     res/values/themes.xml, res/values-night/themes.xml       the day/night pair (D29 context)
-    assets/clipper-bundle.js          built artifact, committed — the PROD build (D28)
+    assets/clipper-bundle.js          injected into the PAGE WebView — committed, PROD build (D28)
+    assets/ui/                        upstream's popup/side-panel/settings + style.css, served
+                                      from our own origin — committed, same rule (D28/D31)
   app/src/test/…/share/SharedUrlTest.kt                      JVM unit tests
 jsbridge/
   package.json, build.mjs             esbuild + sass via Node API (node build.mjs — cross-platform)
@@ -510,7 +537,6 @@ jsbridge/
   test/sandbox.ts                     the linkedom + VM sandbox bundle/bridge tests share
   test/bundle.test.ts, bridge.test.ts, bootstrap.test.ts
   test/fixtures/*.html + README.md    captured pages, and what they cannot prove
-  spike/                              M2.0's throwaway extension-host harness (§2); delete at M2.2
   vendor/obsidian-clipper/            git submodule @ pin
 docs/plan/                            these documents
 LICENSE, .gitignore, .gitattributes
@@ -709,7 +735,8 @@ hand-written reader.
 
 - **M1.0 — Retire the M0 spikes.** Delete `spike/` (`SpikeBActivity.kt`, `SpikeScreen.kt`) and the
   manifest entry; `MainActivity` stops being the spike chooser. The launcher activity becomes a plain
-  "share a link to use this" screen — it is what `just run` lands on, and it grows into M2.4's setup
+  "share a link to use this" screen — it is what `just run` lands on, and it now also carries the
+  way into settings (D33 deleted M2.4's setup screen; there was never anything to set up)
   screen. Spike A's harness is not preserved: A1–A5 are recorded in §2, and M2.3 rebuilds the save
   path properly.
 - **M1.1 — Share target.** `ShareReceiverActivity` with an intent filter for `ACTION_SEND` +
@@ -731,10 +758,10 @@ hand-written reader.
   later); `WebView.setWebContentsDebuggingEnabled(true)` in debug builds. Loading and error states
   (offline, HTTP errors) with retry.
 
-  **Shell bar (D25).** One slim bottom bar, present whether or not the reader is on: `Reader`
-  (toggle) and `Reload` (full page reload); `Clip` joins them in M2. No URL bar, no back/forward
-  buttons, no tabs — D23 holds. System Back walks WebView history where it exists and otherwise
-  finishes the activity; that is an OS gesture, not chrome.
+  **Shell chrome — superseded by D33; see §8's M2.6.** M1 shipped a slim bottom bar (`Reader`,
+  `Reload`); it is now two mini FABs (`Reader`, `Clip`) with `Reload` retired. What has not changed:
+  no URL bar, no back/forward, no tabs — D23 holds — and System Back walks WebView history where it
+  exists and otherwise finishes the activity, which is an OS gesture rather than chrome.
 - **M1.3 — Production shim. DONE (2026-09-01), verified on device.** `shim/browser.ts` backs
   `storage` with `AndroidBridge` (`getItem/setItem/removeItem/keys/clear`, one SharedPreferences file
   with the area as key prefix — `sync:reader_settings`) and forwards `runtime.sendMessage` up as JSON;
@@ -773,17 +800,17 @@ hand-written reader.
     inside the bundle because it is upstream source we do not patch — it is never rendered, and an
     unrendered string is not branding.
   - **Unbuilt controls are hidden, not no-op'd** (M1.6's open choice): a visible button that does
-    nothing is exactly what the governing principle warns against. `hideUnbuiltControls` marks the pen
-    (M4) and both `addToObsidian` buttons (M2) via the aria-labels upstream gives them, read back
-    through the same `getMessage` that rendered them, so it tracks upstream's strings rather than
-    hardcoding English. The clip dropdown and the `Aa` panel's "Settings" row (which opens the
-    *extension's* options page) go by CSS, their classes being unique. **The toolbar in M1 is
-    therefore TOC + `Aa`, both fully working.**
+    nothing is exactly what the governing principle warns against. `hideUnbuiltControls` marks buttons via the
+    aria-labels upstream gives them, read back through the same `getMessage` that rendered them, so
+    it tracks upstream's strings rather than hardcoding English. **Its list is empty as of M2.7** —
+    `addToObsidian` left at M2.6 and the pen at M2.7, as each turned out to work. The `Aa` panel's
+    "Settings" row still goes by CSS (it opens the *extension's* options page). **The toolbar was
+    TOC + `Aa` in M1; it is the full toolbar now.**
 - **M1.6 — Injection and the reader toggle. DONE (2026-09-01).** On `onPageFinished`: inject the
   bundle (idempotent — upstream already guards with `obsidianReaderInitialized`; B3 saw github fire
   `onPageFinished` four times for one navigation and the guard held). **Do not toggle automatically
   (D24).** The page renders normally and the shell offers a "Reader" toggle; `__clipper.toggle()`
-  runs when Johan taps. A too-early tap is recovered with the shell bar's **Reload** → wait → tap
+  runs when Johan taps. A too-early tap is recovered by toggling the reader **off** (which reloads — D33 retired the separate Reload) → wait → tap
   **Reader** again; re-extract cannot exist, and D26 holds the receipts. Unbuilt toolbar controls
   are hidden, not no-op'd — settled and implemented at M1.5.
 
@@ -896,8 +923,8 @@ The Kotlin here is plumbing; the clipper is upstream's.
 
 - **M2.1 — UI WebView on our own origin. DONE (2026-09-01), verified on the Find N6.** Upstream's
   `popup.html` renders in a `ModalBottomSheet` over the page, served from
-  `https://appassets.androidplatform.net/ui/` by `WebViewAssetLoader`, reached by the shell bar's
-  third button (D25). `build.mjs` now emits `assets/ui/` (popup, side-panel, settings + `style.css`)
+  `https://appassets.androidplatform.net/ui/` by `WebViewAssetLoader`, reached by the `Clip` FAB
+  (D33) or the reader toolbar's own Obsidian button (M2.6). `build.mjs` now emits `assets/ui/` (popup, side-panel, settings + `style.css`)
   beside the page bundle; `androidx.webkit` 1.15.0 added.
   - **Mount at `/`, not `/ui/`.** `AssetsPathHandler` appends whatever follows the registered prefix
     to `assets/`, so mounting at `/ui/` strips the very segment the files live under and every page
@@ -1034,8 +1061,8 @@ The Kotlin here is plumbing; the clipper is upstream's.
 - [ ] A very large note (>512 KB) saves via the clipboard path; with clipboard artificially disabled the
   failure is **reported**, not silently rerouted to `content=` (D2 — M2.0 measured the silent reroute).
 - [x] The sheet closes cleanly after a save (`onCloseWindow`) and the app returns to the page.
-  *2026-09-01: verified — the note landed, Obsidian foregrounded (A4), and the app was back on the raw
-  page with the shell bar when returned to.*
+  *2026-09-01: verified — the note landed, Obsidian foregrounded (A4), and the app was back on the
+  raw page when returned to. (Tested before D33; the chrome is now the two FABs.)*
 - [ ] Backgrounding the app mid-clip with a large note does not crash it — note content stays out of
   saved instance state (G0 landmine).
 - [ ] Second clip started from the share sheet while Obsidian is foregrounded works (round-trip focus).
