@@ -78,7 +78,7 @@ everything else was decided by Johan explicitly.
 | D2 | Save via `obsidian://new`, clipboard-first, with `content=` as the only fallback. No SAF write path. On failure, tell Johan — never save by another route | **Rationale corrected at G0/A5 (2026-08-31).** The Brief's premise — that the URI lets Obsidian run its usual import triggers — is measurably false: Templater's on-create trigger does *not* fire for notes created via `obsidian://new`. The decision stands on what survives: no tree-URI plumbing to build or harden, Obsidian implements dedup/append/overwrite for us, and the note enters Obsidian's index immediately. Failure is reported rather than rerouted, because a save that silently takes a different path is worse than a visible error. |
 | D3 | Three-layer architecture: upstream clip engine (dependency) + vendored reader/highlighter + native Kotlin/Compose shell | See [Architecture & Rationale](<Android Web Clipper for Obsidian — Architecture & Rationale.md>). |
 | D4 | Reader (M1) before clip/save (M2) | Johan's call, 2026-08-30. The reading experience is part of the daily driver, not polish. |
-| D5 | v1 = M0 + M1 + M2 + M3 (templates incl. import and URL auto-selection). Post-v1 order: highlighter → reader style settings → in-app login/polish | Johan's call, 2026-08-30. |
+| D5 | v1 = M0 + M1 + M2 + M3 (templates incl. import and URL auto-selection). Post-v1 order: highlighter → reader style settings → in-app login/polish | Johan's call, 2026-08-30. **Reader style settings left this list on 2026-09-01**: screenshot 2 is upstream's own `Aa` panel, which M1.3 made work and persist, so M5 is delivered but for a theme check (§12). Post-v1 is now highlighter → in-app login/polish; G2 reconfirms the order either way. |
 | D6 | Dev environment: Android Studio + physical device; **macOS and Windows are both first-class dev machines** | Johan's call. Hard constraint: Gradle wrapper + Node scripts only, no bash-only tooling. |
 | D7 | Reference device: Oppo Find N6 — Android 16, ColorOS, foldable | Reader must work on cover and inner displays. |
 | D8 | Highlighter (when it lands, M4) is in-session only — no cross-visit persistence | One-shot clip flow doesn't need the desktop extension's cross-visit storage. Flag to change. |
@@ -775,19 +775,26 @@ hand-written reader.
 
 ## 12. M5 — Reader style settings (post-v1)
 
-**Largely delivered already, as of M1.3 (2026-09-01).** Upstream's `Aa` panel works in our WebView —
-font size, width, line height, appearance, theme and font — and now persists, because
-`Reader.saveSettings` writes `reader_settings` through the bridge into SharedPreferences. Verified on
-the Find N6 across a cold relaunch. What remains of M5 is only the *bespoke* sheet of screenshot 2:
-worth building only if the upstream panel turns out to be wrong for the phone, not on principle.
+**Delivered by M1.3 (2026-09-01). There is no UI left to build here.**
+
+Screenshot 2 *is* upstream's `Aa` panel — Johan's correction, 2026-09-01. Problem & UI Reference's
+legend says so ("the *Reader* style sheet at the bottom of the screen: font size, colour and
+similar"), and M5.1 has said so since this playbook was written; a session reading "sheet" as a
+bespoke design of ours got it wrong and the correction is recorded here so it is not re-derived.
+
+The panel works in our WebView — font size, width, line height, appearance, theme and font — and now
+persists, because `Reader.saveSettings` writes `reader_settings` through the bridge into
+SharedPreferences. Verified on the Find N6 across a cold relaunch. **What remains is M5.2 alone, and
+it is a check for a defect rather than anything to build.**
 
 - ~~**M5.1** Enable the Aa button; screenshot 2's sheet is upstream UI (`reader-settings.ts`) — it
   should work once `storage` round-trips through SharedPreferences.~~ **Done at M1.3**, exactly as
   predicted: the sheet is upstream's, and it started persisting the moment storage reached
   SharedPreferences. Font size, width, spacing and theme all apply and survive a cold relaunch.
 - **M5.2** Theme interplay: reader dark/light/auto vs. the app's own theme and Android's algorithmic
-  darkening (keep darkening off for the reader WebView; the reader owns its colors). **Still open** —
-  M1 has only been exercised in light mode.
+  darkening (keep darkening off for the reader WebView; the reader owns its colors). **The only open
+  item in M5** — M1 has been exercised in light mode only, so this is unverified rather than known
+  broken. Fold into M1.8's device pass rather than carrying a milestone for it.
 - **M5.3** Acceptance: set a non-default style, kill the app, share a new link — style stuck.
   **Met on 2026-09-01** (fontSize 16 → 18, verified across a force-stop).
 
@@ -868,7 +875,7 @@ check ColorOS's "recommended sharing" settings first.
 | Reader typography, layout, TOC button (1) | M1 |
 | Highlighter pen button (1) | M4 |
 | Copy/save popup button (1) | Renders M1; copy action M2 (Kotlin clipboard); save-as-file M6 |
-| Aa reader-style button (1) + its panel | **Working since M1.3** — upstream's own panel, persisted through the bridge. §12's M5 is now only the *bespoke* sheet of screenshot 2, if it is ever wanted |
+| Aa reader-style button (1) + the style sheet it opens (2) | **Done at M1.3** — both are upstream's own panel, persisted through the bridge. Nothing left in §12's M5 but the M5.2 theme check |
 | Clipper button — gem replaced (1) → clip sheet (3) | M2 |
 | Template dropdown w/ auto-select (3) | M3 |
 | Properties editor, body editor, note name (3) | M2 |
