@@ -57,8 +57,8 @@ Bumping either pin follows the procedure in §14 — never casually.
 
   Two constraints M2 inherits, both earned rather than assumed: **an inbound JS message is never
   authorisation to save** (D27), and **the bookmark fallback must trigger on empty *text*, not an
-  empty content string** (M1.7's Instagram fixture). **M2.3's `overwrite` question is the one
-  decision M2 still waits on** — it needs Johan before that task is written.
+  empty content string** (M1.7's Instagram fixture). M2.3's `overwrite` question is settled —
+  behaviour flags are executed as written, unprompted (D30). **M2 has no open decisions.**
 
   Read §5's status block for the `just`-based dev loop, which post-dates this playbook's original
   text.
@@ -81,7 +81,9 @@ mode became a tap rather than an automatic transform, and the argument that carr
 human stays in the loop, **not** the settle-timing rationale (which does not survive scrutiny — see
 M1.6). Decisions already consistent with it: D2 (a failed save is reported, never rerouted), M2.5
 (a bookmark clip is offered, not substituted), M3.3 (template auto-selection preselects; the manual
-override always wins).
+override always wins). **D30 marks the principle's edge**: a decision the human took in advance — a
+template's `overwrite` flag — is still the human deciding, so executing it unprompted is deference,
+and re-confirming it on every clip would be the machine challenging a standing decision.
 
 Settled decisions. Items marked *(default)* were taken by Claude with Johan's standing option to veto;
 everything else was decided by Johan explicitly.
@@ -117,6 +119,7 @@ everything else was decided by Johan explicitly.
 | D27 | **`AndroidBridge` is gated on a per-activity token, handed to the bundle as a closure parameter** *(default)* | `addJavascriptInterface` attaches the bridge to the main world of every page the WebView loads, so a hostile page's script can call it exactly as our bundle does. minSdk 31 means only `@JavascriptInterface` methods are reachable (no reflection), so the exposure is bounded to what we write — but what we write grows a save-to-vault path in M2. The token is passed as a closure parameter by the injection wrapper and never assigned to `window`, which page script could read. **Residual, recorded rather than papered over: anything on `window.__clipper` is reachable by the page, including our storage and `sendMessage`. M2 must never treat an inbound message as authorisation to save** — the save is initiated by a tap on the Kotlin side. **Threat model bounded by Johan (2026-09-01, M1 architecture review): the app is personal-use and he chooses what reaches it, so a hostile page attacking the bridge is out of scope.** Consequence: the wide diagnostic surface on `window.__clipper` (the shim, the installers, the sweep helpers) ships as-is rather than being DEBUG-gated — do not re-propose trimming it — and the token stays for what M2 adds to the bridge. The tap-only save rule stands regardless, as defence in depth. |
 | D28 | **The committed `clipper-bundle.js` is the production build** — minified, `DEBUG_MODE` off. `just jsbuild-debug` is a local-only override | Johan's call, 2026-09-01, closing M1.4's open question. There is one `assets/` directory, so whatever is committed is what a release APK ships; committing the debug build meant shipping ~800 KB of extra bytes with verbose logging on. The cost is B2's deliberate choice of an unminified artifact for unaided `chrome://inspect` reading — recovered by `just jsbuild-debug` (and `jsbuild-debug-map` for sourcemaps). Note `just jsverify` rebuilds `--prod` in place before diffing: a *committed* debug artifact fails it, while an uncommitted local one is silently rebuilt back to prod and passes. The rejected alternative was a Gradle-driven `--prod` build on the release variant, which would have made release builds require Node — something §14 promises they never do. **Consequence for the test suite:** it builds `--prod` to `jsbridge/.tmp/` via `--outfile`, so running tests exercises exactly what ships and can never leave a debug artifact in the tree. |
 | D29 | **No algorithmic darkening. The raw page renders as authored, and the reader is told the app's theme directly** *(default)* | **Reverses the mechanism recorded under M1.8 earlier the same day (2026-09-01), on Johan's report that a raw page in dark mode was "almost unreadable".** `setAlgorithmicDarkeningAllowed` is the only switch that makes a WebView report `prefers-color-scheme: dark`, which is why it appeared to be the answer — it is what made the reader go dark. But WebView only defers to a page's own dark theme when the page declares `color-scheme`; stephango drives its theme from JS and declares nothing, so it was machine-darkened into dark-grey text on a dark background. Measured worse than the light page it replaced. The reader now learns the theme from a `darkMode` closure parameter and answers `prefers-color-scheme` itself (`installColorSchemeBridge`), so both surfaces are right: raw pages exactly as their authors drew them, reader properly dark. A site that picks its theme from the same query now gets to apply *its own* dark stylesheet — the thing algorithmic darkening was a poor substitute for. Johan's explicit Light/Dark choice in the `Aa` panel is untouched; it never consults the query. |
+| D30 | **Template behaviour flags are executed as written — `overwrite=true` replaces the existing note, no existence check, no confirmation** | Johan's call, 2026-09-01, closing M2.3's open question. A template is a standing human decision: its creator chose that modality for a reason (and importing one is adopting it — M3.2), so it is respected, not continually challenged. This *is* the governing principle rather than an exception — deciding in advance is still the human deciding; see the principle's note above. Safety context from A4: the no-flag default de-duplicates (`note 1.md` beside `note.md`), so replacement only ever happens where a template explicitly asks for it. |
 
 ## 2. Gate outcomes
 
@@ -801,14 +804,9 @@ is merely believed to work.
   the oversized case throws catchably, so try and catch rather than pre-checking a magic number. If
   that catch fires, surface the failure to Johan (D2); do not save by another route.
 
-  **Open, and the one place the plan currently sits awkwardly with §1's governing principle.** The
-  behaviour flag comes from the *template*, so re-clipping a URL whose template says `overwrite=true`
-  replaces an existing note in place with no prompt — the machine acting destructively on the human's
-  behalf. A4 measured that the default (no flag) is safe: Obsidian writes `note 1.md` beside
-  `note.md`. Options: (a) leave it — the template is itself Johan's earlier choice, so the human did
-  decide, just in advance; (b) confirm in the clip sheet when the target note already exists and the
-  behaviour is destructive, showing which file will be replaced. **(b) is what the principle argues
-  for; (a) is defensible and cheaper. Johan's call, needed before M2.3 is written.**
+  **Behaviour flags are executed as written — settled → D30 (2026-09-01).** A template carrying
+  `overwrite=true` replaces the existing note in place: no existence check, no confirmation — and
+  the same respect for every other flag. Do not add a prompt here.
 - **M2.4 — Setup screen.** First-run setup: vault name (typed, must match Obsidian's vault name
   exactly), default folder ("Clippings"), silent-open toggle.
   *`SafWriter` and the `ACTION_OPEN_DOCUMENT_TREE` / `takePersistableUriPermission` plumbing are
@@ -825,8 +823,8 @@ is merely believed to work.
 - [ ] Article, YouTube page, and extraction-hostile page all land in the vault correctly (the last as a
   bookmark note).
 - [ ] Note name, folder, properties, and body edits in the sheet are reflected in the saved note.
-- [ ] Re-clipping the same URL respects the template behavior (A4 semantics), and a destructive
-  behaviour (`overwrite`) does whatever the open question in M2.3 was settled to do.
+- [ ] Re-clipping the same URL respects the template behavior (A4 semantics); a template with
+  `overwrite=true` replaces the note in place, unprompted (D30).
 - [ ] A very large note (>512 KB) saves via the clipboard path; with clipboard artificially disabled
   the `content=` path reports a clear failure rather than saving silently or truncating (D2).
 - [ ] Backgrounding the app mid-clip with a large note does not crash it — note content stays out of
