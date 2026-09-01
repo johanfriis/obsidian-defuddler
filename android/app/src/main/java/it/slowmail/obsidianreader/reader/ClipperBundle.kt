@@ -1,6 +1,7 @@
 package it.slowmail.obsidianreader.reader
 
 import android.content.Context
+import org.json.JSONObject
 
 /**
  * The JS half of Layer B: the built `clipper-bundle.js` asset plus the small snippets Kotlin uses
@@ -32,11 +33,18 @@ object ClipperBundle {
         }
 
     /**
-     * The bundle is an IIFE evaluating to `undefined`; the trailing probe makes the
-     * `evaluateJavascript` callback carry a verdict instead of `null`.
+     * The bundle, wrapped so the shim receives its bridge token as a closure parameter.
+     *
+     * The wrapper is the whole security story of [AndroidBridge]: a page can read any global we
+     * set, but not a closure variable, so the token cannot be recovered by page script and the
+     * bridge refuses calls without it. The bundle is an IIFE evaluating to `undefined`, so a
+     * trailing probe makes the `evaluateJavascript` callback carry a verdict instead of `null`.
      */
-    fun injectionScript(context: Context): String =
-        source(context) + "\n;(typeof window.__clipper);"
+    fun injectionScript(context: Context, bridgeToken: String): String =
+        "(function (__clipperBridgeToken) {\n" +
+            source(context) +
+            "\n})(" + JSONObject.quote(bridgeToken) + ");" +
+            "\n;(typeof window.__clipper);"
 
     /**
      * Toggles the reader, reporting synchronously which direction it went.
@@ -60,13 +68,12 @@ object ClipperBundle {
 """
 
     /**
-     * Whether the reader actually rendered.
-     *
-     * Deliberately *not* the `obsidian-reader-active` class: `Reader.apply` catches its own errors,
-     * so on a page where extraction dies (G0 found this on Trusted Types pages before D21) the
-     * class is still set while nothing was built. The container element only exists if apply got
-     * far enough to construct the reader, which is the thing worth reporting.
+     * The action the bundle posts when `Reader.apply` finishes, carrying `rendered` — whether the
+     * reader really built its container, as opposed to merely having been asked to. Upstream only
+     * announces the *off* direction, and `apply` swallows its own errors, so this is ours.
      */
-    const val READER_RENDERED_JS =
-        "(!!document.querySelector('.obsidian-reader-container'))"
+    const val ACTION_READER_APPLIED = "clipperReaderApplied"
+
+    /** Direct read of the same fact, for a timeout path that cannot wait for the message. */
+    const val READER_RENDERED_JS = "(!!window.__clipper && window.__clipper.rendered())"
 }

@@ -108,15 +108,20 @@ jstest:
 jsdeps:
     npm install
 
-# Rebuild android/app/src/main/assets/clipper-bundle.js from the vendored submodule.
+# Rebuild the committed clipper-bundle.js — minified, DEBUG_MODE off, as shipped (D28).
 [working-directory('jsbridge')]
 jsbuild:
     npm run build
 
-# Rebuild with inline sourcemaps for chrome://inspect work (~3x larger, not committed).
+# Local unminified build for chrome://inspect — never commit it ('just jsverify' will object).
 [working-directory('jsbridge')]
 jsbuild-debug:
     npm run build:debug
+
+# As jsbuild-debug, plus inline sourcemaps back to the .ts files (~3x larger).
+[working-directory('jsbridge')]
+jsbuild-debug-map:
+    npm run build:debug-sourcemap
 
 # Typecheck the jsbridge TypeScript.
 [working-directory('jsbridge')]

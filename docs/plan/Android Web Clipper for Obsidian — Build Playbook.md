@@ -96,6 +96,8 @@ everything else was decided by Johan explicitly.
 | D24 | **Reader mode is user-triggered, not automatic.** The shared page loads and renders normally; the app shell shows a "Reader" toggle. Recourse if extraction is incomplete: wait and re-extract | Johan's call, 2026-09-01, resolving the M1.6 problem B3 opened. **Rests on the governing principle above**: the toggle keeps Johan in the decision loop instead of the machine mandating a transform that may land him in a broken state. Secondary benefits: a badly extracting page leaves him looking at the real page he can decline to toggle, and an on-page login form becomes usable for free (what remains of M6.1 after D23). **The settle-timing argument does *not* hold and is not what this rests on** — see M1.6. |
 | D25 | **Shell chrome is one slim bottom bar: `Reader`, `Reload`, and `Clip` from M2** | Johan's call, 2026-09-01. D24 requires a surface to host the reader toggle and D23 forbids a browser UI, but §16's inventory owned neither — the bar closes that gap. `Reload` is a full page reload, available in both states, added at Johan's request. It is deliberately *not* back/forward/URL/tabs, so D23 holds. After a reload the raw page is showing with the reader off, since D24 forbids auto-toggling. |
 | D26 | **No re-extract action; Reload is the recovery for a too-early reader tap** | Johan's call, 2026-09-01, on evidence that M1.6's re-extract is not buildable. `Reader.apply` ends its cleanup with `doc.body.textContent = ''` and stores no copy of the original (`utils/reader.ts` ~L2130); `cleanupScripts` (~L1376) clears every page timer; `restore` (~L2383) recovers the page only by `window.location.reload()`. So once the reader is on, the page's DOM *and* its running scripts are gone: a late-hydrating YouTube transcript can never arrive, and a re-extract would re-parse the reader's own output. The recovery is Reload → wait → tap Reader, which toggling the reader off already does internally. The architecture where re-extract genuinely works — render into a separate document via `Reader.preExtractedContent` / `reader-view.ts` / `toggleReaderPageIframe`, leaving the original page alive and hydrating underneath — is a Layer B rework, **not carried to G1 as an agenda item**; revisit only if reading real articles shows extraction timing is a recurring problem. |
+| D27 | **`AndroidBridge` is gated on a per-activity token, handed to the bundle as a closure parameter** *(default)* | `addJavascriptInterface` attaches the bridge to the main world of every page the WebView loads, so a hostile page's script can call it exactly as our bundle does. minSdk 31 means only `@JavascriptInterface` methods are reachable (no reflection), so the exposure is bounded to what we write — but what we write grows a save-to-vault path in M2. The token is passed as a closure parameter by the injection wrapper and never assigned to `window`, which page script could read. **Residual, recorded rather than papered over: anything on `window.__clipper` is reachable by the page, including our storage and `sendMessage`. M2 must never treat an inbound message as authorisation to save** — the save is initiated by a tap on the Kotlin side. |
+| D28 | **The committed `clipper-bundle.js` is the production build** — minified, `DEBUG_MODE` off. `just jsbuild-debug` is a local-only override | Johan's call, 2026-09-01, closing M1.4's open question. There is one `assets/` directory, so whatever is committed is what a release APK ships; committing the debug build meant shipping ~800 KB of extra bytes with verbose logging on. The cost is B2's deliberate choice of an unminified artifact for unaided `chrome://inspect` reading — recovered by `just jsbuild-debug` (and `jsbuild-debug-map` for sourcemaps), which `just jsverify` will then correctly report as dirty. The rejected alternative was a Gradle-driven `--prod` build on the release variant, which would have made release builds require Node — something §14 promises they never do. **Consequence for the test suite:** it builds `--prod` to `jsbridge/.tmp/` via `--outfile`, so running tests exercises exactly what ships and can never leave a debug artifact in the tree. |
 | D23 | **No generic browser UI, ever.** No URL bar, no back/forward, no tabs, history or downloads. If a page cannot be read without signing in, that is a workaround Johan performs outside the app — or the clip does not happen | Johan's call, 2026-08-31, when the question of pulling M6.1's browsing strip into M1 was raised. He clips from logged-in sites rarely, and a browser surface is far larger than it looks (tabs, downloads, uploads, fullscreen video, permission prompts, PDFs). This bounds M6.1 and overrides the "normal browser chrome" mitigation the Architecture doc used to propose. |
 | D21 | Install a pass-through Trusted Types `default` policy before the reader runs | Johan's call, 2026-08-31 at G0. Without it, pages sending `require-trusted-types-for 'script'` (YouTube) kill the reader outright — Defuddle's `innerHTML` and `Reader.apply`'s `DOMParser` both throw and nothing renders. A browser extension never meets this because its content script runs in an isolated world Trusted Types does not police; our main-world injection is policed. **The accepted trade:** the policy switches off the page's own XSS guard for the life of that document. Johan's reasoning — the reader/clip session is ephemeral, the page is one he chose, and we already inject a bundle that rewrites the whole DOM. Only creatable where the page sends no `trusted-types` directive naming allowed policies; where it is refused we log and the page fails visibly. See `installTrustedTypesPolicy` in `jsbridge/src/bundle-entry.ts`. |
 | D22 | B4's extraction-quality pass is folded into M1.7's fixture harness rather than run as a throwaway spike *(default)* | B3 already exercised extraction on four real pages including the two hard ones (CSP-strict, Trusted Types), so B4's remaining value is markdown/metadata quality on saved fixtures — which is exactly M1.7's job. Same work, but the output is kept and guards every future submodule bump (D14). M0 therefore ends at G0. Two B3 findings carry into M1.7 as fixture cases: unflattened shadow DOM on github, and the YouTube settle-time question. |
@@ -583,15 +585,50 @@ hand-written reader.
   (toggle) and `Reload` (full page reload); `Clip` joins them in M2. No URL bar, no back/forward
   buttons, no tabs — D23 holds. System Back walks WebView history where it exists and otherwise
   finishes the activity; that is an OS gesture, not chrome.
-- **M1.3 — Production shim.** Replace B1's hardcoded stubs with the real `shim/browser.ts` per §4:
-  bridge-backed `storage`, JSON-backed `i18n`, event-bus `runtime`. Kotlin side: a
-  `@JavascriptInterface` object (`AndroidBridge`) with `getItem/setItem` (SharedPreferences) and
-  `postMessage` (events up), plus an `evaluateJavascript` dispatcher (events down).
-- **M1.4 — Production bundle.** `build.mjs` final form: SCSS compiled (per B2's answer), lucide icons
-  in, sourcemaps in debug, output committed to `android/app/src/main/assets/clipper-bundle.js`. Add
-  `npm run build` and `npm run verify` (rebuild + `git diff --exit-code` on the asset).
-- **M1.5 — Trademark sweep.** Replace the Obsidian gem icon in the vendored toolbar with a placeholder
-  (final icon at G2). Grep vendored assets for other Obsidian marks. Lucide icons stay (ISC).
+- **M1.3 — Production shim. DONE (2026-09-01), verified on device.** `shim/browser.ts` backs
+  `storage` with `AndroidBridge` (`getItem/setItem/removeItem/keys/clear`, one SharedPreferences file
+  with the area as key prefix — `sync:reader_settings`) and forwards `runtime.sendMessage` up as JSON;
+  `__clipper.receive(json)` is the entry point for events coming down. Every call carries the D27
+  token. `session` deliberately never reaches the bridge — it is per-document state by definition.
+  With no bridge (vitest, or the bundle evaluated anywhere else) storage falls back to in-memory maps.
+  - **`jsbridge/test/bridge.test.ts` is the executable spec for `AndroidBridge.kt`**: it evaluates the
+    bundle inside the same wrapper the device uses, against a fake bridge. Argument order or token
+    discipline drifting on either side fails there rather than on the phone.
+  - Measured on the Find N6: upstream's `Aa` panel wrote `fontSize` 16 → 18 through the bridge into
+    `shared_prefs/clipper-storage.xml`, and a cold relaunch read it back.
+- **M1.4 — Production bundle. Substantially done; one question open.** SCSS compiled, sourcemaps
+  opt-in via `build:debug`, output committed, `npm run build` / `npm run verify` (`just jsbuild` /
+  `just jsverify`) in place since M0.
+  - **Lucide turned out to be a non-issue.** The reader builds its toolbar SVGs inline with its own
+    `createSVG`; `lucide` is imported only by `core/settings.ts` and `core/highlights.ts`, which are
+    extension pages we do not bundle. Measured from the esbuild metafile: **lucide contributes 0
+    bytes**, as do the `src/icons/*.png` extension icons. Nothing to wire in.
+  - ~~**OPEN — which bundle does a release APK ship?**~~ **Settled → D28: the committed artifact is
+    the production build** (1210 KB minified, down from 1995 KB). `npm run build` and `just jsbuild`
+    now mean `--prod`; `just jsbuild-debug` is the local Layer B override and `just jsverify` will
+    call it dirty, which is the point. `build.mjs` gained `--outfile` so the test suite builds
+    `--prod` to `jsbridge/.tmp/` instead of overwriting the committed asset — previously every
+    `npm test` left a debug bundle in the tree. All 32 JS tests pass against the minified build,
+    which is also the evidence that minification does not disturb the `__clipper` surface.
+
+- **M1.5 — Trademark sweep. DONE (2026-09-01), verified on device.** `sweepBranding` replaces the gem
+  after `Reader.apply` builds the toolbar — a post-hoc DOM swap, not a submodule patch, so §14's bump
+  procedure stays a version change (the same discipline `installStyle` follows). The mark is matched
+  by reading each toolbar `svg`'s `viewBox` for `0 0 256 256` — the gem is the only 256-grid icon
+  among 24-grid lucide shapes — rather than by an attribute selector, which is case-sensitive against
+  SVG and unsupported outright by linkedom.
+  - **Sweep of the rest of the tree: the gem is the only mark that reaches the bundle.** It appears in
+    `utils/reader.ts`, `settings.html` and `highlights.html`; the latter two are extension pages we do
+    not bundle, and `src/icons/*.png` contribute 0 bytes. The gem's path data still exists as a string
+    inside the bundle because it is upstream source we do not patch — it is never rendered, and an
+    unrendered string is not branding.
+  - **Unbuilt controls are hidden, not no-op'd** (M1.6's open choice): a visible button that does
+    nothing is exactly what the governing principle warns against. `hideUnbuiltControls` marks the pen
+    (M4) and both `addToObsidian` buttons (M2) via the aria-labels upstream gives them, read back
+    through the same `getMessage` that rendered them, so it tracks upstream's strings rather than
+    hardcoding English. The clip dropdown and the `Aa` panel's "Settings" row (which opens the
+    *extension's* options page) go by CSS, their classes being unique. **The toolbar in M1 is
+    therefore TOC + `Aa`, both fully working.**
 - **M1.6 — Injection and the reader toggle.** On `onPageFinished`: inject the bundle (idempotent —
   upstream already guards with `obsidianReaderInitialized`; B3 saw github fire `onPageFinished` four
   times for one navigation and the guard held). **Do not toggle automatically (D24).** The page
@@ -738,12 +775,21 @@ hand-written reader.
 
 ## 12. M5 — Reader style settings (post-v1)
 
-- **M5.1** Enable the Aa button; screenshot 2's sheet is upstream UI (`reader-settings.ts`) — it should
-  work once `storage` round-trips through SharedPreferences. Verify font size/width/spacing/theme
-  apply and persist across sessions.
+**Largely delivered already, as of M1.3 (2026-09-01).** Upstream's `Aa` panel works in our WebView —
+font size, width, line height, appearance, theme and font — and now persists, because
+`Reader.saveSettings` writes `reader_settings` through the bridge into SharedPreferences. Verified on
+the Find N6 across a cold relaunch. What remains of M5 is only the *bespoke* sheet of screenshot 2:
+worth building only if the upstream panel turns out to be wrong for the phone, not on principle.
+
+- ~~**M5.1** Enable the Aa button; screenshot 2's sheet is upstream UI (`reader-settings.ts`) — it
+  should work once `storage` round-trips through SharedPreferences.~~ **Done at M1.3**, exactly as
+  predicted: the sheet is upstream's, and it started persisting the moment storage reached
+  SharedPreferences. Font size, width, spacing and theme all apply and survive a cold relaunch.
 - **M5.2** Theme interplay: reader dark/light/auto vs. the app's own theme and Android's algorithmic
-  darkening (keep darkening off for the reader WebView; the reader owns its colors).
+  darkening (keep darkening off for the reader WebView; the reader owns its colors). **Still open** —
+  M1 has only been exercised in light mode.
 - **M5.3** Acceptance: set a non-default style, kill the app, share a new link — style stuck.
+  **Met on 2026-09-01** (fontSize 16 → 18, verified across a force-stop).
 
 ## 13. M6 — In-app login & polish (post-v1)
 
@@ -765,7 +811,8 @@ hand-written reader.
 
 **macOS/Windows parity (D6).** Everything invoked cross-platform: Gradle via wrapper, JS via
 `node build.mjs` / npm scripts (esbuild's JS API — no shell scripting inside), no symlinks, no
-case-only filename distinctions. `.gitattributes` from P0.1 handles line endings; on Windows also
+case-only filename distinctions. The committed bundle is the production build (D28), so a local
+`just jsbuild-debug` must be rebuilt with `just jsbuild` before committing. `.gitattributes` from P0.1 handles line endings; on Windows also
 `git config core.longpaths true` before cloning (deep submodule paths). Android builds never require
 Node (committed bundle); touching `jsbridge/` requires running `npm run build` and committing the
 asset in the same commit — `npm run verify` is the honesty check.
@@ -821,7 +868,7 @@ check ColorOS's "recommended sharing" settings first.
 | Reader typography, layout, TOC button (1) | M1 |
 | Highlighter pen button (1) | M4 |
 | Copy/save popup button (1) | Renders M1; copy action M2 (Kotlin clipboard); save-as-file M6 |
-| Aa reader-style button (1) + style sheet (2) | M5 |
+| Aa reader-style button (1) + its panel | **Working since M1.3** — upstream's own panel, persisted through the bridge. §12's M5 is now only the *bespoke* sheet of screenshot 2, if it is ever wanted |
 | Clipper button — gem replaced (1) → clip sheet (3) | M2 |
 | Template dropdown w/ auto-select (3) | M3 |
 | Properties editor, body editor, note name (3) | M2 |

@@ -9,14 +9,20 @@ import { beforeAll, describe, expect, it } from 'vitest';
 // Playbook M0/B1: prove the bundle builds from the pinned submodule and evaluates into a DOM
 // exposing window.__clipper. Reader.toggle itself needs a real browser — that is B3, on device.
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const bundlePath = join(root, '../android/app/src/main/assets/clipper-bundle.js');
+const committedBundle = join(root, '../android/app/src/main/assets/clipper-bundle.js');
+// Built to scratch, with --prod so the tests exercise exactly what ships (D28). Writing to the
+// committed asset instead would leave a debug bundle in the tree every time the suite ran.
+const bundlePath = join(root, '.tmp/clipper-bundle.js');
 
 let source: string;
 let run: <T = unknown>(expression: string) => T;
 let reinject: () => void;
 
 beforeAll(() => {
-  execFileSync(process.execPath, ['build.mjs'], { cwd: root, stdio: 'pipe' });
+  execFileSync(process.execPath, ['build.mjs', '--prod', '--outfile', bundlePath], {
+    cwd: root,
+    stdio: 'pipe',
+  });
   source = readFileSync(bundlePath, 'utf8');
   ({ run, reinject } = createContext());
 }, 120_000);
@@ -92,9 +98,12 @@ function messagesFor(locale: string) {
 }
 
 describe('clipper-bundle', () => {
-  it('builds to the committed asset path', () => {
+  it('builds, and the committed asset exists', () => {
     expect(existsSync(bundlePath)).toBe(true);
     expect(source.length).toBeGreaterThan(500_000);
+    // Whether the *committed* one is current is `npm run verify`'s job, not a test's — a test that
+    // rebuilt it in place would make the answer trivially yes.
+    expect(existsSync(committedBundle)).toBe(true);
   });
 
   it('evaluates into a document and exposes the __clipper surface', () => {
@@ -181,6 +190,59 @@ describe('clipper-bundle', () => {
     // Idempotent — a second call must not stack duplicate stylesheets.
     expect(run('window.__clipper.installReaderCss()')).toBe(false);
     expect(run('document.querySelectorAll("#obsidian-reader-styles").length')).toBe(1);
+  });
+
+  it('replaces the Obsidian mark in the reader toolbar (M1.5, §17)', () => {
+    // The gem is the only 256-grid icon among the toolbar's 24-grid lucide shapes, which is what
+    // the sweep matches on. Built by hand here because Reader.apply needs a real browser.
+    run(`document.body.innerHTML =
+      '<div class="obsidian-reader-nav">' +
+      '<button class="nav-btn"><svg viewBox="0 0 256 256"><path d="M94.82 149.44"/></svg></button>' +
+      '</div>'`);
+    expect(run('window.__clipper.sweepBranding(document)')).toBe(1);
+    expect(run('document.querySelectorAll(\'.obsidian-reader-nav svg\').length')).toBe(1);
+    expect(run('document.querySelector(".obsidian-reader-nav svg").getAttribute("viewBox")')).toBe(
+      '0 0 24 24',
+    );
+  });
+
+  it('is a no-op on a toolbar that carries no mark', () => {
+    run(`document.body.innerHTML =
+      '<div class="obsidian-reader-nav"><button class="nav-btn"><svg viewBox="0 0 24 24"></svg></button></div>'`);
+    expect(run('window.__clipper.sweepBranding(document)')).toBe(0);
+  });
+
+  it('hides the controls whose milestones have not landed (M1.6)', () => {
+    // Labels come from upstream's own getMessage, which is what the reader renders them with.
+    run(`document.body.innerHTML =
+      '<div class="obsidian-reader-nav">' +
+      '<button aria-label="Contents"></button>' +
+      '<button aria-label="Highlighter"></button>' +
+      '<button aria-label="Add to Obsidian"></button>' +
+      '<button aria-label="Reader settings"></button>' +
+      '<button aria-label="Add to Obsidian"></button>' +
+      '</div>'`);
+    // The pen (M4) and both Add-to-Obsidian buttons (M2) — not the TOC, not Aa.
+    expect(run('window.__clipper.hideUnbuiltControls(document)')).toBe(3);
+    expect(run('document.querySelectorAll("[data-clipper-unbuilt]").length')).toBe(3);
+    expect(
+      run('document.querySelector(\'[aria-label="Reader settings"]\').hasAttribute("data-clipper-unbuilt")'),
+    ).toBe(false);
+    expect(
+      run('document.querySelector(\'[aria-label="Contents"]\').hasAttribute("data-clipper-unbuilt")'),
+    ).toBe(false);
+  });
+
+  it('ships the CSS that acts on those marks', () => {
+    run('var el = document.getElementById("obsidian-reader-styles"); if (el) el.remove();');
+    run('window.__clipper.installReaderCss()');
+    const css = run<string>('document.getElementById("obsidian-reader-styles").textContent');
+    expect(css).toContain('[data-clipper-unbuilt]');
+    expect(css).toContain('.obsidian-reader-clip-dropdown');
+    // The Aa panel's "Settings" row opens the extension's options page, which we do not have.
+    expect(css).toContain('.obsidian-reader-settings-link-button');
+    // ...and the reader's own stylesheet is still in there ahead of them.
+    expect(css).toContain('obsidian-reader-container');
   });
 
   it('installs a Trusted Types default policy where the page enforces them', () => {

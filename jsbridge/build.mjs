@@ -2,11 +2,15 @@
 // (git submodule, pinned — see playbook "Pinned upstream") plus our shim.
 //
 // Cross-platform by construction (D6): esbuild + sass through their Node APIs, no shell.
-//   node build.mjs            debug bundle (sourcemap, DEBUG_MODE on)
-//   node build.mjs --prod     release bundle (minified, DEBUG_MODE off)
+//   node build.mjs --prod     the committed artifact — minified, DEBUG_MODE off (D28)
+//   node build.mjs            local Layer B build — unminified, DEBUG_MODE on, readable in
+//                             chrome://inspect. Never commit this; `npm run verify` will say so.
+//   --sourcemap               adds inline sourcemaps to a local build (~3x the size)
+//   --outfile <path>          write somewhere other than the committed asset (the tests do this,
+//                             so running them can never dirty the artifact)
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
 import * as sass from 'sass';
@@ -14,11 +18,15 @@ import * as sass from 'sass';
 const root = dirname(fileURLToPath(import.meta.url));
 const upstream = join(root, 'vendor/obsidian-clipper');
 const upstreamSrc = join(upstream, 'src');
-const outfile = join(root, '../android/app/src/main/assets/clipper-bundle.js');
+const outfileFlag = process.argv.indexOf('--outfile');
+const outfile =
+  outfileFlag === -1
+    ? join(root, '../android/app/src/main/assets/clipper-bundle.js')
+    : resolve(process.argv[outfileFlag + 1]);
 
 const prod = process.argv.includes('--prod');
 // Inline sourcemaps map back to individual .ts files but add ~4.7 MB, and the bundle is injected
-// into every page. Unminified output is readable enough in chrome://inspect on its own, so this
+// into every page. An unminified build is readable enough in chrome://inspect on its own, so this
 // is opt-in: node build.mjs --sourcemap
 const sourcemap = process.argv.includes('--sourcemap');
 

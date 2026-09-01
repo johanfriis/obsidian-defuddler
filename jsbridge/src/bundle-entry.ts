@@ -5,7 +5,7 @@
 
 import { Reader } from '../vendor/obsidian-clipper/src/utils/reader';
 import { initializeI18n } from '../vendor/obsidian-clipper/src/utils/i18n';
-import browser, { bundledAssets } from '../shim/browser';
+import browser, { bundledAssets, hasNativeBridge, receiveFromNative } from '../shim/browser';
 
 declare global {
   interface Window {
@@ -21,9 +21,20 @@ interface ClipperBundle {
   Reader: typeof Reader;
   toggle: (cssMode?: CssMode) => Promise<boolean>;
   isActive: () => boolean;
+  /** Whether the reader actually built its container (as opposed to merely being toggled). */
+  rendered: () => boolean;
   installReaderCss: () => boolean;
   installHighlighterCss: () => boolean;
   installTrustedTypesPolicy: () => string;
+  /** Replaces the Obsidian mark in the reader toolbar; returns how many it found (M1.5). */
+  sweepBranding: (doc: Document) => number;
+  /** Marks the toolbar buttons whose milestones have not landed; returns how many (M1.6). */
+  hideUnbuiltControls: (doc: Document) => number;
+  /** Entry point for events sent down from Kotlin via evaluateJavascript (M1.3). */
+  receive: (json: string) => void;
+  /** Whether storage and messaging are really reaching Kotlin, or falling back to in-memory.
+   *  Read from chrome://inspect when the reader behaves as if it has no settings. */
+  hasNativeBridge: boolean;
   /** The shim standing in for webextension-polyfill. Exposed so B3 can inspect storage and
    *  asset resolution from chrome://inspect, and so tests can exercise runtime.getURL. */
   browser: typeof browser;
@@ -50,18 +61,18 @@ const HIGHLIGHTER_STYLE_ID = 'obsidian-highlighter-stylesheet';
  *
  * Returns false if the style was already present.
  */
-function installStyle(id: string, asset: string): boolean {
+function installStyle(id: string, asset: string, extra = ''): boolean {
   if (document.getElementById(id)) return false;
   const style = document.createElement('style');
   style.id = id;
-  style.textContent = bundledAssets[asset] ?? '';
+  style.textContent = (bundledAssets[asset] ?? '') + extra;
   (document.head ?? document.documentElement).appendChild(style);
   return true;
 }
 
 /** reader.css — guarded by upstream's `obsidian-reader-styles` id. */
 function installReaderCss(): boolean {
-  return installStyle(READER_STYLE_ID, 'reader.css');
+  return installStyle(READER_STYLE_ID, 'reader.css', UNBUILT_CONTROLS_CSS);
 }
 
 /**
@@ -110,9 +121,106 @@ function installTrustedTypesPolicy(): string {
   }
 }
 
+// --- M1.5: trademark sweep, and controls whose milestones have not landed ---
+
+/**
+ * Upstream's toolbar carries the Obsidian gem on its "add to Obsidian" button. Upstream's MIT
+ * grant excludes trademarks, icons and marketing (playbook §17), so the mark cannot ship in ours.
+ *
+ * Swapped in the DOM rather than patched in the submodule: the same discipline `installStyle`
+ * follows, so §14's bump procedure stays a version change rather than a rebase. The mark is
+ * matched on its own `viewBox`, which is what identifies it — the gem is the only 256-grid icon
+ * in a toolbar of 24-grid lucide shapes.
+ *
+ * The path data still exists as a string inside the bundle, because it is upstream source we do
+ * not patch. It is never rendered, and an unrendered string is not branding — what §17 governs is
+ * what the app presents as.
+ */
+const OBSIDIAN_MARK_VIEWBOX = '0 0 256 256';
+
+/** Neutral placeholder in the 24-grid stroke style of the toolbar's other icons. Final icon at G2. */
+const PLACEHOLDER_MARK =
+  '<path d="M12 5v14"/><path d="M5 12h14"/>';
+
+function sweepBranding(doc: Document): number {
+  // Read the attribute rather than selecting on it: attribute selectors against SVG elements are
+  // case-sensitive in the DOM and unsupported outright by linkedom, which is what the tests run
+  // on. Walking the toolbar is a handful of nodes and behaves identically in both.
+  const marks = [...doc.querySelectorAll('.obsidian-reader-nav svg')].filter(
+    (svg) => svg.getAttribute('viewBox') === OBSIDIAN_MARK_VIEWBOX,
+  );
+  marks.forEach((mark) => {
+    const replacement = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    replacement.setAttribute('width', '18');
+    replacement.setAttribute('height', '18');
+    replacement.setAttribute('viewBox', '0 0 24 24');
+    replacement.setAttribute('fill', 'none');
+    replacement.setAttribute('stroke', 'currentColor');
+    replacement.setAttribute('stroke-width', '1.75');
+    replacement.setAttribute('stroke-linecap', 'round');
+    replacement.innerHTML = PLACEHOLDER_MARK;
+    mark.replaceWith(replacement);
+  });
+  return marks.length;
+}
+
+/**
+ * Hides the toolbar controls whose milestones have not arrived (M1.6's "hidden or no-op" — hidden
+ * is what looks less broken; a visible button that does nothing is exactly the failure the
+ * governing principle warns about).
+ *
+ * The buttons are indistinguishable by class — pen, clip, `Aa` and the gem all carry
+ * `obsidian-reader-settings-trigger nav-btn` or a subset — so they are matched on the aria-label
+ * upstream gives them, read back through the *same* `getMessage` that rendered it. That tracks
+ * upstream's own strings instead of hardcoding "Highlighter", and it is why this cannot be pure
+ * CSS. Each milestone un-ships one line:
+ *   - `highlighter` — the pen. M4.
+ *   - `addToObsidian` — both the paperclip and the gem button carry this label. M2.
+ * The `Aa` panel's own "Settings" row goes with them, by CSS since its class is unique: it opens
+ * the *extension's* options page, which does not exist here. Our settings screen is M2.4.
+ * The TOC and `Aa` are left alone: both are upstream features that already work here, and `Aa` now
+ * persists its settings through the bridge (M1.3).
+ */
+const UNBUILT_LABEL_KEYS = ['highlighter', 'addToObsidian'];
+
+const UNBUILT_CONTROLS_CSS = `
+[data-clipper-unbuilt] { display: none !important; }
+.obsidian-reader-clip-dropdown { display: none !important; }
+.obsidian-reader-settings-link-button { display: none !important; }
+`;
+
+function hideUnbuiltControls(doc: Document): number {
+  const unbuilt = new Set(
+    UNBUILT_LABEL_KEYS.map((key) => browser.i18n.getMessage(key)).filter(Boolean),
+  );
+  let hidden = 0;
+  doc.querySelectorAll('.obsidian-reader-nav button').forEach((button) => {
+    const label = button.getAttribute('aria-label');
+    if (label && unbuilt.has(label)) {
+      button.setAttribute('data-clipper-unbuilt', '');
+      hidden += 1;
+    }
+  });
+  return hidden;
+}
+
 /** Mirrors reader-script.ts: it tracks reader state with a class on documentElement. */
 function isActive(): boolean {
   return document.documentElement.classList.contains('obsidian-reader-active');
+}
+
+/** The action Kotlin listens for. Ours, not upstream's — see `toggle`. */
+const READER_APPLIED = 'clipperReaderApplied';
+
+/**
+ * Whether the reader really built something, as opposed to having merely been asked to.
+ *
+ * Deliberately not the `obsidian-reader-active` class: `Reader.apply` catches its own errors, so
+ * on a page where extraction dies the class is set while nothing was rendered. The container only
+ * exists if apply got far enough to construct it.
+ */
+function readerRendered(): boolean {
+  return !!document.querySelector('.obsidian-reader-container');
 }
 
 // 'inline' is the default per Johan's call at G0 (2026-08-31): it costs nothing on pages without
@@ -129,6 +237,15 @@ async function toggle(cssMode: CssMode = 'inline'): Promise<boolean> {
   const active = await Reader.toggle(document);
   if (!wasActive) {
     document.documentElement.classList.toggle('obsidian-reader-active', active);
+    sweepBranding(document);
+    hideUnbuiltControls(document);
+    // Tell Kotlin the apply finished, and whether anything was actually built (M1.3). Upstream
+    // only ever announces the *off* direction (`readerModeChanged`, isActive: false), and
+    // `Reader.apply` swallows its own errors — so it resolves whether or not it rendered. The
+    // container is the honest signal, and pushing it here is what lets the shell bar stop polling.
+    browser.runtime
+      .sendMessage({ action: READER_APPLIED, rendered: readerRendered() })
+      .catch(() => {});
   }
   return active;
 }
@@ -140,9 +257,14 @@ if (!window.obsidianReaderInitialized) {
     Reader,
     toggle,
     isActive,
+    rendered: readerRendered,
     installReaderCss,
     installHighlighterCss,
     installTrustedTypesPolicy,
+    sweepBranding,
+    hideUnbuiltControls,
+    receive: receiveFromNative,
+    hasNativeBridge,
     browser,
   };
   // Sets the dayjs locale and resolves the UI language; failure is not fatal, getMessage

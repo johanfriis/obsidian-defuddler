@@ -3,9 +3,10 @@
 // `src/utils/browser-polyfill.ts`, so a single esbuild alias covers every `browser.*` call in
 // the vendored tree.
 //
-// Spike B scope: storage is in-memory, runtime messaging is a local event bus, and getURL is
-// backed by the asset map build.mjs embeds. M1.3 replaces storage and runtime with the Kotlin
-// AndroidBridge; i18n and getURL are already in their final shape.
+// `storage` and `runtime` messaging are backed by the Kotlin `AndroidBridge` when one is present
+// (M1.3); `i18n` and `getURL` resolve entirely inside the bundle. With no bridge — vitest, or the
+// bundle evaluated anywhere but our WebView — storage falls back to in-memory maps, which is what
+// the tests exercise.
 
 import { assets, messages } from 'virtual:assets';
 
@@ -22,31 +23,101 @@ function eventSource() {
   };
 }
 
+// --- the Kotlin bridge -----------------------------------------------------
+// `addJavascriptInterface` attaches `AndroidBridge` to the main world of *every* page the WebView
+// loads, so any script on a hostile page can call it as easily as we can. Since minSdk is 31 only
+// @JavascriptInterface-annotated methods are reachable (no reflection), which bounds the damage to
+// what we ourselves expose — but "what we expose" grows a save-to-vault path in M2, so the calls
+// are gated on a token instead.
+//
+// The token is handed in as a *closure parameter* by the Kotlin injection wrapper and never
+// written to `window`: page script can read any global we set, but it cannot read a closure
+// variable.
+//
+// What this does not fix, stated plainly so M2 does not assume otherwise: anything reachable
+// through `window.__clipper` is reachable by the page, and that includes this module's own storage
+// and sendMessage. **A message arriving from JS is therefore never authorisation to save** — M2's
+// save must be initiated by a tap on the Kotlin side.
+declare const __clipperBridgeToken: string | undefined;
+
+interface NativeBridge {
+  getItem(token: string, area: string, key: string): string | null;
+  setItem(token: string, area: string, key: string, json: string): void;
+  removeItem(token: string, area: string, key: string): void;
+  keys(token: string, area: string): string;
+  clear(token: string, area: string): void;
+  postMessage(token: string, json: string): void;
+}
+
+const native: { bridge: NativeBridge; token: string } | null = (() => {
+  const token = typeof __clipperBridgeToken === 'string' ? __clipperBridgeToken : null;
+  const bridge = (globalThis as { AndroidBridge?: NativeBridge }).AndroidBridge;
+  return token && bridge ? { bridge, token } : null;
+})();
+
 // --- storage ---------------------------------------------------------------
 // `storage.sync` and `storage.local` are distinct areas upstream: Reader.loadSettings reads
 // `reader_settings` from sync, storage-utils reads general settings from local. Both are backed
 // by their own map here; both merge over module-level defaults upstream, so an empty area is safe.
 
-function storageArea() {
+/**
+ * One storage area, backed by SharedPreferences through the bridge when there is one.
+ *
+ * Reads are synchronous across the bridge and asynchronous to upstream: `@JavascriptInterface`
+ * calls block the calling JS thread while Kotlin runs, and a SharedPreferences lookup is a hash
+ * probe against an already-loaded map, so there is nothing worth making async. Upstream awaits
+ * these anyway.
+ *
+ * `session` never takes a bridge: it is per-document state by definition and outliving the
+ * document would be the bug, not the feature.
+ */
+function storageArea(area: 'local' | 'sync' | 'session') {
   const store = new Map<string, unknown>();
+  const backing = area === 'session' ? null : native;
+
+  const getOne = (key: string): unknown => {
+    if (!backing) return store.get(key);
+    const raw = backing.bridge.getItem(backing.token, area, key);
+    if (raw == null) return undefined;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      // A value we cannot parse is a value we did not write. Treat the key as absent so upstream
+      // falls back to its defaults rather than propagating a parse error into the reader.
+      console.warn(`[shim] storage.${area}: unparseable value at "${key}"`);
+      return undefined;
+    }
+  };
+
+  const hasOne = (key: string): boolean =>
+    backing ? backing.bridge.getItem(backing.token, area, key) != null : store.has(key);
+
+  const allKeys = (): string[] => {
+    if (!backing) return [...store.keys()];
+    try {
+      return JSON.parse(backing.bridge.keys(backing.token, area)) as string[];
+    } catch {
+      return [];
+    }
+  };
 
   const read = (keys?: string | string[] | Record<string, unknown> | null) => {
     const out: Record<string, unknown> = {};
     if (keys == null) {
-      for (const [k, v] of store) out[k] = v;
+      for (const k of allKeys()) out[k] = getOne(k);
       return out;
     }
     if (typeof keys === 'string') {
-      if (store.has(keys)) out[keys] = store.get(keys);
+      if (hasOne(keys)) out[keys] = getOne(keys);
       return out;
     }
     if (Array.isArray(keys)) {
-      for (const k of keys) if (store.has(k)) out[k] = store.get(k);
+      for (const k of keys) if (hasOne(k)) out[k] = getOne(k);
       return out;
     }
     // Object form: the values are defaults for missing keys.
     for (const [k, fallback] of Object.entries(keys)) {
-      out[k] = store.has(k) ? store.get(k) : fallback;
+      out[k] = hasOne(k) ? getOne(k) : fallback;
     }
     return out;
   };
@@ -54,19 +125,28 @@ function storageArea() {
   return {
     get: async (keys?: string | string[] | Record<string, unknown> | null) => read(keys),
     set: async (items: Record<string, unknown>) => {
-      for (const [k, v] of Object.entries(items)) store.set(k, v);
+      for (const [k, v] of Object.entries(items)) {
+        if (backing) backing.bridge.setItem(backing.token, area, k, JSON.stringify(v));
+        else store.set(k, v);
+      }
     },
     remove: async (keys: string | string[]) => {
-      for (const k of Array.isArray(keys) ? keys : [keys]) store.delete(k);
+      for (const k of Array.isArray(keys) ? keys : [keys]) {
+        if (backing) backing.bridge.removeItem(backing.token, area, k);
+        else store.delete(k);
+      }
     },
-    clear: async () => void store.clear(),
+    clear: async () => {
+      if (backing) backing.bridge.clear(backing.token, area);
+      else store.clear();
+    },
   };
 }
 
 const storage = {
-  local: storageArea(),
-  sync: storageArea(),
-  session: storageArea(),
+  local: storageArea('local'),
+  sync: storageArea('sync'),
+  session: storageArea('session'),
   onChanged: eventSource(),
 };
 
@@ -104,7 +184,18 @@ function getURL(path: string): string {
 
 const onMessage = eventSource();
 
-/** Local event bus. M1.3 forwards this to Kotlin via AndroidBridge.postMessage. */
+/**
+ * Upstream's channel to its background script; here, the channel to Kotlin.
+ *
+ * The reader sends eight actions (`readerModeChanged`, `copyMarkdownToClipboard`,
+ * `saveMarkdownToFile`, `openReaderPage`, `openHighlights`, `openSettings`, `toggleIframe`,
+ * `disableYouTubeEmbedRule`). Most belong to milestones that have not landed, so unhandled
+ * actions are Kotlin's problem to log, not ours to filter — a silent drop here would be
+ * indistinguishable from a bug in the reader.
+ *
+ * Local listeners still run first, so anything the bundle handles internally keeps working with
+ * no bridge at all (which is how the tests see it).
+ */
 async function sendMessage(message: unknown): Promise<unknown> {
   for (const listener of onMessage.listeners) {
     const result = listener(message, {}, () => {});
@@ -115,7 +206,29 @@ async function sendMessage(message: unknown): Promise<unknown> {
       return result;
     }
   }
+  if (native) {
+    try {
+      native.bridge.postMessage(native.token, JSON.stringify(message));
+    } catch (error) {
+      console.warn('[shim] postMessage to Kotlin failed', error);
+    }
+  }
   return undefined;
+}
+
+/**
+ * Events coming *down* from Kotlin, delivered by `evaluateJavascript`. Exposed on the bundle
+ * surface as `__clipper.receive` so Kotlin has a stable entry point.
+ */
+function receiveFromNative(json: string): void {
+  let message: unknown;
+  try {
+    message = JSON.parse(json);
+  } catch (error) {
+    console.warn('[shim] unparseable message from Kotlin', error);
+    return;
+  }
+  for (const listener of onMessage.listeners) listener(message, {}, () => {});
 }
 
 const runtime = {
@@ -195,7 +308,9 @@ const scripting = {
 
 const browser = { storage, runtime, i18n, tabs, scripting };
 
-export { storage, runtime, i18n, tabs, scripting };
+export { storage, runtime, i18n, tabs, scripting, receiveFromNative };
+/** Whether a Kotlin bridge is actually backing storage and messaging. Diagnostics only. */
+export const hasNativeBridge = native !== null;
 /** Raw embedded asset text. Not part of the polyfill surface — bundle-entry.ts uses it for the
  *  inline-CSS delivery path, which exists because blob URLs are subject to page CSP. */
 export { assets as bundledAssets };

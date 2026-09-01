@@ -3,8 +3,8 @@ package it.slowmail.obsidianreader.reader
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Bundle
-import android.os.SystemClock
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -16,9 +16,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Button
@@ -44,9 +44,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import it.slowmail.obsidianreader.BuildConfig
 import it.slowmail.obsidianreader.R
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONObject
+import java.util.UUID
 import kotlin.coroutines.resume
 
 /**
@@ -90,7 +93,11 @@ class ReaderActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface {
-                    ReaderScreen(url = url, onDone = { finish() })
+                    ReaderScreen(
+                        url = url,
+                        prefs = getSharedPreferences(AndroidBridge.PREFS_FILE, MODE_PRIVATE),
+                        onDone = { finish() },
+                    )
                 }
             }
         }
@@ -113,16 +120,23 @@ private const val CHROME_MOBILE_UA =
     "Mozilla/5.0 (Linux; Android 16; K) AppleWebKit/537.36 (KHTML, like Gecko) " +
         "Chrome/140.0.0.0 Mobile Safari/537.36"
 
-/** How long to wait for `Reader.apply` to build its container before calling the toggle failed. */
-private const val READER_RENDER_TIMEOUT_MS = 10_000L
+/** How long to wait for the bundle's `clipperReaderApplied` message before giving up on it and
+ *  asking the page directly. Extraction on a heavy page is seconds, not tens of seconds. */
+private const val READER_APPLIED_TIMEOUT_MS = 15_000L
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun ReaderScreen(url: String, onDone: () -> Unit) {
+private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var webView by remember { mutableStateOf<WebView?>(null) }
+    // One token per activity, handed to the bundle as a closure parameter so page script cannot
+    // read it back off `window`. See AndroidBridge's class comment.
+    val bridgeToken = remember { UUID.randomUUID().toString() }
+    // Completed by the bundle's `clipperReaderApplied` message; created before the toggle is fired
+    // so the message can never arrive before there is something to receive it.
+    var pendingApply by remember { mutableStateOf<CompletableDeferred<Boolean>?>(null) }
     var progress by remember { mutableStateOf(0) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var readerActive by remember { mutableStateOf(false) }
@@ -140,9 +154,14 @@ private fun ReaderScreen(url: String, onDone: () -> Unit) {
         toggleInFlight = true
         scope.launch {
             try {
+                val signal = CompletableDeferred<Boolean>()
+                pendingApply = signal
                 when (val outcome = web.evaluate(ClipperBundle.TOGGLE_JS).unquote()) {
                     "applying" -> {
-                        val rendered = web.awaitReaderRendered()
+                        // A lost message and a failed render look identical from here, so on
+                        // timeout ask the page directly rather than assuming the worst.
+                        val rendered = withTimeoutOrNull(READER_APPLIED_TIMEOUT_MS) { signal.await() }
+                            ?: (web.evaluate(ClipperBundle.READER_RENDERED_JS) == "true")
                         readerActive = rendered
                         if (!rendered) {
                             // Honest failure beats a button that lies about its state (D2's spirit).
@@ -157,6 +176,7 @@ private fun ReaderScreen(url: String, onDone: () -> Unit) {
                     }
                 }
             } finally {
+                pendingApply = null
                 toggleInFlight = false
             }
         }
@@ -190,6 +210,16 @@ private fun ReaderScreen(url: String, onDone: () -> Unit) {
                             settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
+                            // M1.3. Attached before the first load, since the interface only
+                            // applies to pages loaded after it is added. WebView calls in on its
+                            // own thread, so the handler hops back to main before touching state.
+                            addJavascriptInterface(
+                                AndroidBridge(bridgeToken, prefs) { json ->
+                                    post { onBridgeMessage(json, pendingApply) }
+                                },
+                                AndroidBridge.NAME,
+                            )
+
                             webChromeClient = object : WebChromeClient() {
                                 override fun onProgressChanged(view: WebView, newProgress: Int) {
                                     progress = newProgress
@@ -206,7 +236,7 @@ private fun ReaderScreen(url: String, onDone: () -> Unit) {
                                     // guard held across the four onPageFinished calls github fired
                                     // for a single navigation (G0/B3).
                                     view.evaluateJavascript(
-                                        ClipperBundle.injectionScript(ctx),
+                                        ClipperBundle.injectionScript(ctx, bridgeToken),
                                     ) { result ->
                                         if (result.unquote() != "object") {
                                             android.util.Log.w("Reader", "bundle injection -> $result")
@@ -291,28 +321,39 @@ private fun LoadErrorPane(description: String, onRetry: () -> Unit) {
     }
 }
 
+/**
+ * Events arriving from the bundle (M1.3).
+ *
+ * Only our own `clipperReaderApplied` is acted on. Upstream's other seven actions belong to
+ * milestones that have not landed — they are logged rather than dropped silently, because a
+ * message going nowhere quietly is exactly the failure that would be blamed on the reader.
+ *
+ * Nothing here may be treated as authorisation to act on the vault: page script can reach
+ * `window.__clipper` and therefore `sendMessage`. M2's save must start from a tap on this side.
+ */
+private fun onBridgeMessage(json: String, pendingApply: CompletableDeferred<Boolean>?) {
+    val message = runCatching { JSONObject(json) }.getOrElse {
+        android.util.Log.w("Reader", "unparseable bridge message: ${json.take(120)}")
+        return
+    }
+    when (val action = message.optString("action")) {
+        ClipperBundle.ACTION_READER_APPLIED ->
+            pendingApply?.complete(message.optBoolean("rendered", false))
+
+        // Upstream announces the off direction itself; the reload that follows resets our state
+        // anyway, so there is nothing to do but note it.
+        "readerModeChanged" -> Unit
+
+        else -> android.util.Log.i("Reader", "unhandled bridge action: $action")
+    }
+}
+
 /** `evaluateJavascript` as a suspend call. Must be called from the main thread, which every
  *  `rememberCoroutineScope()` launch is. */
 private suspend fun WebView.evaluate(js: String): String? =
     suspendCancellableCoroutine { continuation ->
         evaluateJavascript(js) { result -> continuation.resume(result) }
     }
-
-/**
- * Waits for `Reader.apply` to actually build its container.
- *
- * Polling rather than a callback because the reader's completion signal only reaches Kotlin once
- * the AndroidBridge exists (M1.3). `Reader.toggle` cannot be awaited: turning the reader off it
- * returns a promise that never resolves by design.
- */
-private suspend fun WebView.awaitReaderRendered(): Boolean {
-    val deadline = SystemClock.uptimeMillis() + READER_RENDER_TIMEOUT_MS
-    while (SystemClock.uptimeMillis() < deadline) {
-        delay(150)
-        if (evaluate(ClipperBundle.READER_RENDERED_JS) == "true") return true
-    }
-    return false
-}
 
 /** `evaluateJavascript` hands back JSON; unwrap the string case these snippets return. */
 private fun String?.unquote(): String =
