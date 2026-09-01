@@ -109,4 +109,12 @@ object ClipperBundle {
 
     /** Direct read of the same fact, for a timeout path that cannot wait for the message. */
     const val READER_RENDERED_JS = "(!!window.__clipper && window.__clipper.rendered())"
+
+    /**
+     * Whether the reader machinery considers itself on (the `obsidian-reader-active` class),
+     * regardless of whether anything rendered. The two can disagree — `Reader.apply` swallows its
+     * errors — and this one decides whether the next toggle applies or restores, so it is the one
+     * the shell button must track.
+     */
+    const val READER_ACTIVE_JS = "(!!window.__clipper && window.__clipper.isActive())"
 }

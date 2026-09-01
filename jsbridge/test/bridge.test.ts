@@ -1,9 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runInNewContext } from 'node:vm';
-import { parseHTML } from 'linkedom';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { createSandbox } from './sandbox';
 
 /**
  * M1.3 — the contract between the shim and Kotlin's `AndroidBridge`.
@@ -14,7 +13,6 @@ import { beforeAll, describe, expect, it } from 'vitest';
  * fails rather than the phone.
  */
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const committedBundle = join(root, '../android/app/src/main/assets/clipper-bundle.js');
 // Built once by test/global-setup.ts: --prod, so the suite exercises exactly what ships (D28), and
 // to scratch, so running tests can never leave a debug bundle in the tree.
 const bundlePath = join(root, '.tmp/clipper-bundle.js');
@@ -32,7 +30,6 @@ let prefs: Map<string, string>;
 beforeAll(() => {
   const source = readFileSync(bundlePath, 'utf8');
 
-  const { window, document } = parseHTML('<html><head></head><body><p>hi</p></body></html>');
   calls = [];
   prefs = new Map();
 
@@ -78,29 +75,8 @@ beforeAll(() => {
     },
   };
 
+  const { window, evaluate } = createSandbox({ AndroidBridge });
   (window as unknown as Record<string, unknown>).AndroidBridge = AndroidBridge;
-
-  const sandbox: Record<string, unknown> = {
-    window,
-    document,
-    AndroidBridge,
-    navigator: { language: 'en-GB', userAgent: 'node' },
-    console,
-    setTimeout,
-    clearTimeout,
-    queueMicrotask,
-    requestAnimationFrame: (fn: () => void) => setTimeout(fn, 0),
-    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
-    Blob: function Blob(this: { parts: string[] }, parts: string[]) {
-      this.parts = parts;
-    },
-    URL: { createObjectURL: () => 'blob:stub' },
-  };
-  sandbox.globalThis = sandbox;
-  sandbox.self = sandbox;
-  Object.setPrototypeOf(sandbox, window);
-
-  const evaluate = (js: string, filename: string) => runInNewContext(js, sandbox, { filename });
 
   // The wrapper ClipperBundle.injectionScript builds. The token reaches the shim as a closure
   // parameter and is never assigned to window — that is the whole point of it.

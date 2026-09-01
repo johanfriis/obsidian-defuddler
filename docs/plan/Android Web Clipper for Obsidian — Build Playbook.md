@@ -37,27 +37,28 @@ Bumping either pin follows the procedure in §14 — never casually.
   listed at the gate. Outcomes are recorded in §2 so later sessions don't re-litigate.
 - This is a living document. Sessions executing a milestone check off tasks, record gate outcomes and
   measurements (e.g. the `content=` size limit from M0), and correct anything reality disproves.
+  **Corrections collapse the text to current truth, with a dated pointer at the decision that changed
+  it — not strikethrough archaeology left in place.** Git is the archive; where superseded text might
+  ever be needed again, name the commit that holds it (the way B3's deleted harness stays readable at
+  `819ce26`). The audience is the next agent session, which pays for every dead line it has to parse.
+  *(Johan's call, 2026-09-01, at the M1 architecture review.)*
 - A fresh implementation session should read §1 (decisions), §2 (gate outcomes), §3 (upstream ground
   truth), and the milestone it is executing. Architecture & Rationale is background reading; Problem &
   UI Reference is where every "screenshot N" reference resolves.
-- **Where things stand (2026-09-01): M0 and M1 are built; GATE G1 is open and is the next thing that
-  happens.** Phase 0 done, G0 closed and passed. Every M1 task (M1.0–M1.8) is implemented and
-  verified on the Find N6 — share → page → tap Reader → Reload, the Kotlin bridge, the trademark
-  sweep, the extraction harness, the foldable pass.
+- **Where things stand (2026-09-01): M0 and M1 are built; G0 and G1 are both CLOSED — passed. The
+  next thing that happens is M2.** Every M1 task (M1.0–M1.8) is implemented and verified on the
+  Find N6; G1 passed on Johan reading real articles on the device (§2). Three M1 acceptance boxes
+  carried through the gate honestly unticked — see §7, and the carried-forward box in §8.
 
-  **Before writing any M2 code, read D25–D29 in §1.** They were all taken on 2026-09-01 and several
-  reverse earlier text: D26 (re-extract is not buildable; Reload is the recovery) supersedes what
-  M1.6 used to specify, and D29 (no algorithmic darkening) reverses a fix recorded under M1.8 earlier
-  the same day. §2's G0 findings still correct several older assumptions.
-
-  **G1 is not a formality to skip.** Three items on M1's acceptance list are honestly unticked — the
-  three apps' own share sheets, the YouTube transcript on device since B3, and cookie persistence
-  against a real login. Read §7's acceptance list; it marks what was observed and what was not.
+  **Before writing any M2 code, read D25–D29 in §1.** All taken 2026-09-01, and several overrule
+  fixes or text recorded earlier the same day: D26 (re-extract is not buildable; Reload is the
+  recovery) and D29 (no algorithmic darkening) in particular. §2's G0 findings still correct
+  several older assumptions.
 
   Two constraints M2 inherits, both earned rather than assumed: **an inbound JS message is never
   authorisation to save** (D27), and **the bookmark fallback must trigger on empty *text*, not an
-  empty content string** (M1.7's Instagram fixture). M2.3's `overwrite` question is still open and
-  needs Johan before that task is written.
+  empty content string** (M1.7's Instagram fixture). **M2.3's `overwrite` question is the one
+  decision M2 still waits on** — it needs Johan before that task is written.
 
   Read §5's status block for the `just`-based dev loop, which post-dates this playbook's original
   text.
@@ -91,7 +92,7 @@ everything else was decided by Johan explicitly.
 | D2 | Save via `obsidian://new`, clipboard-first, with `content=` as the only fallback. No SAF write path. On failure, tell Johan — never save by another route | **Rationale corrected at G0/A5 (2026-08-31).** The Brief's premise — that the URI lets Obsidian run its usual import triggers — is measurably false: Templater's on-create trigger does *not* fire for notes created via `obsidian://new`. The decision stands on what survives: no tree-URI plumbing to build or harden, Obsidian implements dedup/append/overwrite for us, and the note enters Obsidian's index immediately. Failure is reported rather than rerouted, because a save that silently takes a different path is worse than a visible error. |
 | D3 | Three-layer architecture: upstream clip engine (dependency) + vendored reader/highlighter + native Kotlin/Compose shell | See [Architecture & Rationale](<Android Web Clipper for Obsidian — Architecture & Rationale.md>). |
 | D4 | Reader (M1) before clip/save (M2) | Johan's call, 2026-08-30. The reading experience is part of the daily driver, not polish. |
-| D5 | v1 = M0 + M1 + M2 + M3 (templates incl. import and URL auto-selection). Post-v1 order: highlighter → reader style settings → in-app login/polish | Johan's call, 2026-08-30. **Reader style settings left this list on 2026-09-01**: screenshot 2 is upstream's own `Aa` panel, which M1.3 made work and persist, so M5 is delivered but for a theme check (§12). Post-v1 is now highlighter → in-app login/polish; G2 reconfirms the order either way. |
+| D5 | v1 = M0 + M1 + M2 + M3 (templates incl. import and URL auto-selection). Post-v1 order: highlighter → in-app login/polish; G2 reconfirms | Johan's call, 2026-08-30. Reader style settings were on the post-v1 list until 2026-09-01: screenshot 2 turned out to be upstream's own `Aa` panel, delivered at M1.3 and closed at M1.8 (§12), so there is nothing left to order. |
 | D6 | Dev environment: Android Studio + physical device; **macOS and Windows are both first-class dev machines** | Johan's call. Hard constraint: Gradle wrapper + Node scripts only, no bash-only tooling. |
 | D7 | Reference device: Oppo Find N6 — Android 16, ColorOS, foldable | Reader must work on cover and inner displays. |
 | D8 | Highlighter (when it lands, M4) is in-session only — no cross-visit persistence | One-shot clip flow doesn't need the desktop extension's cross-visit storage. Flag to change. |
@@ -103,19 +104,19 @@ everything else was decided by Johan explicitly.
 | D14 | Extraction regression harness starts in M1 *(default)* | Every submodule bump is guarded from the beginning. |
 | D15 | Project license MIT; `THIRD_PARTY_LICENSES` shipped in APK; no Obsidian trademarks in shipped branding | See §17. |
 | D16 | Templates are authored/edited in the desktop clipper and imported here as JSON *(default)* | v1 imports and selects templates; it does not include a template editor. |
+| D17 | Track the current stable toolchain (AGP/Gradle/JDK) rather than pinning to an older one or shimming | Standard tools at their sanctioned versions beat local workarounds; migrations are cheapest taken early. Toolchain versions live in `android/gradle/libs.versions.toml`, `android/gradle/wrapper`, `android/gradle/gradle-daemon-jvm.properties` and `mise.toml`. |
 | D18 | `SafWriter` (M2.4) and SAF hardening (M6.3) deferred, not deleted | Follows from D2: with no SAF save path there is nothing to write or harden. **The original justification (SAF bypasses Obsidian's triggers) turned out not to separate the two options — A5 showed `obsidian://` bypasses them too.** What the deferral now rests on is cost: `SafWriter` reimplements append/overwrite that Obsidian gives us free, plus tree-URI permission plumbing to build and harden. Two accepted trades: (1) `obsidian://` always foregrounds Obsidian (A4) — SAF would have allowed a true background save; (2) the URI contract is now a single point of failure — acceptable because notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss. |
 | D19 | Bundle English UI strings only (`LOCALES = ['en']`) and highlight.js's ~40-language `lib/common` rather than the full ~190 | Johan's call, 2026-08-31, confirming the B1 trims. Both degrade gracefully — `getMessage` falls back to English, `highlightElement` leaves an unregistered language unstyled — and both are one-line reverts in `jsbridge/build.mjs`. |
 | D20 | Reader CSS is delivered as an inline `<style>` by default, not upstream's blob-URL `<link>` — for `reader.css` and `highlighter.css` alike | Johan's call, 2026-08-31 at G0. Measured: the blob path is refused by any page with a `style-src` that omits `blob:` (github.com), leaving the reader stripped and unstyled. Inlining costs nothing on pages without CSP, and detecting a refusal in order to fall back is harder than always inlining. Implemented without patching upstream — see `installStyle` in `jsbridge/src/bundle-entry.ts`. |
-| D24 | **Reader mode is user-triggered, not automatic.** The shared page loads and renders normally; the app shell shows a "Reader" toggle. ~~Recourse if extraction is incomplete: wait and re-extract~~ — **superseded by D26: the recourse is Reload → wait → tap Reader again**, because re-extract turned out not to be buildable | Johan's call, 2026-09-01, resolving the M1.6 problem B3 opened. **Rests on the governing principle above**: the toggle keeps Johan in the decision loop instead of the machine mandating a transform that may land him in a broken state. Secondary benefits: a badly extracting page leaves him looking at the real page he can decline to toggle, and an on-page login form becomes usable for free (what remains of M6.1 after D23). **The settle-timing argument does *not* hold and is not what this rests on** — see M1.6. |
-| D25 | **Shell chrome is one slim bottom bar: `Reader`, `Reload`, and `Clip` from M2** | Johan's call, 2026-09-01. D24 requires a surface to host the reader toggle and D23 forbids a browser UI, but §16's inventory owned neither — the bar closes that gap. `Reload` is a full page reload, available in both states, added at Johan's request. It is deliberately *not* back/forward/URL/tabs, so D23 holds. After a reload the raw page is showing with the reader off, since D24 forbids auto-toggling. |
-| D26 | **No re-extract action; Reload is the recovery for a too-early reader tap** | Johan's call, 2026-09-01, on evidence that M1.6's re-extract is not buildable. `Reader.apply` ends its cleanup with `doc.body.textContent = ''` and stores no copy of the original (`utils/reader.ts` ~L2130); `cleanupScripts` (~L1376) clears every page timer; `restore` (~L2383) recovers the page only by `window.location.reload()`. So once the reader is on, the page's DOM *and* its running scripts are gone: a late-hydrating YouTube transcript can never arrive, and a re-extract would re-parse the reader's own output. The recovery is Reload → wait → tap Reader, which toggling the reader off already does internally. The architecture where re-extract genuinely works — render into a separate document via `Reader.preExtractedContent` / `reader-view.ts` / `toggleReaderPageIframe`, leaving the original page alive and hydrating underneath — is a Layer B rework, **not carried to G1 as an agenda item**; revisit only if reading real articles shows extraction timing is a recurring problem. |
-| D27 | **`AndroidBridge` is gated on a per-activity token, handed to the bundle as a closure parameter** *(default)* | `addJavascriptInterface` attaches the bridge to the main world of every page the WebView loads, so a hostile page's script can call it exactly as our bundle does. minSdk 31 means only `@JavascriptInterface` methods are reachable (no reflection), so the exposure is bounded to what we write — but what we write grows a save-to-vault path in M2. The token is passed as a closure parameter by the injection wrapper and never assigned to `window`, which page script could read. **Residual, recorded rather than papered over: anything on `window.__clipper` is reachable by the page, including our storage and `sendMessage`. M2 must never treat an inbound message as authorisation to save** — the save is initiated by a tap on the Kotlin side. |
-| D28 | **The committed `clipper-bundle.js` is the production build** — minified, `DEBUG_MODE` off. `just jsbuild-debug` is a local-only override | Johan's call, 2026-09-01, closing M1.4's open question. There is one `assets/` directory, so whatever is committed is what a release APK ships; committing the debug build meant shipping ~800 KB of extra bytes with verbose logging on. The cost is B2's deliberate choice of an unminified artifact for unaided `chrome://inspect` reading — recovered by `just jsbuild-debug` (and `jsbuild-debug-map` for sourcemaps), which `just jsverify` will then correctly report as dirty. The rejected alternative was a Gradle-driven `--prod` build on the release variant, which would have made release builds require Node — something §14 promises they never do. **Consequence for the test suite:** it builds `--prod` to `jsbridge/.tmp/` via `--outfile`, so running tests exercises exactly what ships and can never leave a debug artifact in the tree. |
-| D29 | **No algorithmic darkening. The raw page renders as authored, and the reader is told the app's theme directly** *(default)* | **Reverses the mechanism recorded under M1.8 earlier the same day (2026-09-01), on Johan's report that a raw page in dark mode was "almost unreadable".** `setAlgorithmicDarkeningAllowed` is the only switch that makes a WebView report `prefers-color-scheme: dark`, which is why it appeared to be the answer — it is what made the reader go dark. But WebView only defers to a page's own dark theme when the page declares `color-scheme`; stephango drives its theme from JS and declares nothing, so it was machine-darkened into dark-grey text on a dark background. Measured worse than the light page it replaced. The reader now learns the theme from a `darkMode` closure parameter and answers `prefers-color-scheme` itself (`installColorSchemeBridge`), so both surfaces are right: raw pages exactly as their authors drew them, reader properly dark. A site that picks its theme from the same query now gets to apply *its own* dark stylesheet — the thing algorithmic darkening was a poor substitute for. Johan's explicit Light/Dark choice in the `Aa` panel is untouched; it never consults the query. |
-| D23 | **No generic browser UI, ever.** No URL bar, no back/forward, no tabs, history or downloads. If a page cannot be read without signing in, that is a workaround Johan performs outside the app — or the clip does not happen | Johan's call, 2026-08-31, when the question of pulling M6.1's browsing strip into M1 was raised. He clips from logged-in sites rarely, and a browser surface is far larger than it looks (tabs, downloads, uploads, fullscreen video, permission prompts, PDFs). This bounds M6.1 and overrides the "normal browser chrome" mitigation the Architecture doc used to propose. |
 | D21 | Install a pass-through Trusted Types `default` policy before the reader runs | Johan's call, 2026-08-31 at G0. Without it, pages sending `require-trusted-types-for 'script'` (YouTube) kill the reader outright — Defuddle's `innerHTML` and `Reader.apply`'s `DOMParser` both throw and nothing renders. A browser extension never meets this because its content script runs in an isolated world Trusted Types does not police; our main-world injection is policed. **The accepted trade:** the policy switches off the page's own XSS guard for the life of that document. Johan's reasoning — the reader/clip session is ephemeral, the page is one he chose, and we already inject a bundle that rewrites the whole DOM. Only creatable where the page sends no `trusted-types` directive naming allowed policies; where it is refused we log and the page fails visibly. See `installTrustedTypesPolicy` in `jsbridge/src/bundle-entry.ts`. |
 | D22 | B4's extraction-quality pass is folded into M1.7's fixture harness rather than run as a throwaway spike *(default)* | B3 already exercised extraction on four real pages including the two hard ones (CSP-strict, Trusted Types), so B4's remaining value is markdown/metadata quality on saved fixtures — which is exactly M1.7's job. Same work, but the output is kept and guards every future submodule bump (D14). M0 therefore ends at G0. Two B3 findings carry into M1.7 as fixture cases: unflattened shadow DOM on github, and the YouTube settle-time question. |
-| D17 | Track the current stable toolchain (AGP/Gradle/JDK) rather than pinning to an older one or shimming | Standard tools at their sanctioned versions beat local workarounds; migrations are cheapest taken early. Toolchain versions live in `android/gradle/libs.versions.toml`, `android/gradle/wrapper`, `android/gradle/gradle-daemon-jvm.properties` and `mise.toml`. |
+| D23 | **No generic browser UI, ever.** No URL bar, no back/forward, no tabs, history or downloads. If a page cannot be read without signing in, that is a workaround Johan performs outside the app — or the clip does not happen | Johan's call, 2026-08-31, when the question of pulling M6.1's browsing strip into M1 was raised. He clips from logged-in sites rarely, and a browser surface is far larger than it looks (tabs, downloads, uploads, fullscreen video, permission prompts, PDFs). This bounds M6.1 and overrides the "normal browser chrome" mitigation the Architecture doc used to propose. |
+| D24 | **Reader mode is user-triggered, not automatic.** The shared page loads and renders normally; the app shell shows a "Reader" toggle. Recovery for a too-early tap: Reload → wait → tap Reader again (D26) | Johan's call, 2026-09-01, resolving the M1.6 problem B3 opened. **Rests on the governing principle above**: the toggle keeps Johan in the decision loop instead of the machine mandating a transform that may land him in a broken state. Secondary benefits: a badly extracting page leaves him looking at the real page he can decline to toggle, and an on-page login form becomes usable for free (what remains of M6.1 after D23). **The settle-timing argument does *not* hold and is not what this rests on** — see M1.6. |
+| D25 | **Shell chrome is one slim bottom bar: `Reader`, `Reload`, and `Clip` from M2** | Johan's call, 2026-09-01. D24 requires a surface to host the reader toggle and D23 forbids a browser UI, but §16's inventory owned neither — the bar closes that gap. `Reload` is a full page reload, available in both states, added at Johan's request. It is deliberately *not* back/forward/URL/tabs, so D23 holds. After a reload the raw page is showing with the reader off, since D24 forbids auto-toggling. |
+| D26 | **No re-extract action; Reload is the recovery for a too-early reader tap** | Johan's call, 2026-09-01, on evidence that M1.6's re-extract is not buildable. `Reader.apply` ends its cleanup with `doc.body.textContent = ''` and stores no copy of the original (`utils/reader.ts` ~L2130); `cleanupScripts` (~L1376) clears every page timer; `restore` (~L2383) recovers the page only by `window.location.reload()`. So once the reader is on, the page's DOM *and* its running scripts are gone: a late-hydrating YouTube transcript can never arrive, and a re-extract would re-parse the reader's own output. The recovery is Reload → wait → tap Reader, which toggling the reader off already does internally. The architecture where re-extract genuinely works — render into a separate document via `Reader.preExtractedContent` / `reader-view.ts` / `toggleReaderPageIframe`, leaving the original page alive and hydrating underneath — is a Layer B rework, **not carried to G1 as an agenda item**; revisit only if reading real articles shows extraction timing is a recurring problem. |
+| D27 | **`AndroidBridge` is gated on a per-activity token, handed to the bundle as a closure parameter** *(default)* | `addJavascriptInterface` attaches the bridge to the main world of every page the WebView loads, so a hostile page's script can call it exactly as our bundle does. minSdk 31 means only `@JavascriptInterface` methods are reachable (no reflection), so the exposure is bounded to what we write — but what we write grows a save-to-vault path in M2. The token is passed as a closure parameter by the injection wrapper and never assigned to `window`, which page script could read. **Residual, recorded rather than papered over: anything on `window.__clipper` is reachable by the page, including our storage and `sendMessage`. M2 must never treat an inbound message as authorisation to save** — the save is initiated by a tap on the Kotlin side. **Threat model bounded by Johan (2026-09-01, M1 architecture review): the app is personal-use and he chooses what reaches it, so a hostile page attacking the bridge is out of scope.** Consequence: the wide diagnostic surface on `window.__clipper` (the shim, the installers, the sweep helpers) ships as-is rather than being DEBUG-gated — do not re-propose trimming it — and the token stays for what M2 adds to the bridge. The tap-only save rule stands regardless, as defence in depth. |
+| D28 | **The committed `clipper-bundle.js` is the production build** — minified, `DEBUG_MODE` off. `just jsbuild-debug` is a local-only override | Johan's call, 2026-09-01, closing M1.4's open question. There is one `assets/` directory, so whatever is committed is what a release APK ships; committing the debug build meant shipping ~800 KB of extra bytes with verbose logging on. The cost is B2's deliberate choice of an unminified artifact for unaided `chrome://inspect` reading — recovered by `just jsbuild-debug` (and `jsbuild-debug-map` for sourcemaps). Note `just jsverify` rebuilds `--prod` in place before diffing: a *committed* debug artifact fails it, while an uncommitted local one is silently rebuilt back to prod and passes. The rejected alternative was a Gradle-driven `--prod` build on the release variant, which would have made release builds require Node — something §14 promises they never do. **Consequence for the test suite:** it builds `--prod` to `jsbridge/.tmp/` via `--outfile`, so running tests exercises exactly what ships and can never leave a debug artifact in the tree. |
+| D29 | **No algorithmic darkening. The raw page renders as authored, and the reader is told the app's theme directly** *(default)* | **Reverses the mechanism recorded under M1.8 earlier the same day (2026-09-01), on Johan's report that a raw page in dark mode was "almost unreadable".** `setAlgorithmicDarkeningAllowed` is the only switch that makes a WebView report `prefers-color-scheme: dark`, which is why it appeared to be the answer — it is what made the reader go dark. But WebView only defers to a page's own dark theme when the page declares `color-scheme`; stephango drives its theme from JS and declares nothing, so it was machine-darkened into dark-grey text on a dark background. Measured worse than the light page it replaced. The reader now learns the theme from a `darkMode` closure parameter and answers `prefers-color-scheme` itself (`installColorSchemeBridge`), so both surfaces are right: raw pages exactly as their authors drew them, reader properly dark. A site that picks its theme from the same query now gets to apply *its own* dark stylesheet — the thing algorithmic darkening was a poor substitute for. Johan's explicit Light/Dark choice in the `Aa` panel is untouched; it never consults the query. |
 
 ## 2. Gate outcomes
 
@@ -124,7 +125,7 @@ Filled in as gates are passed. Empty = not reached.
 | Gate | Question | Outcome | Date |
 |---|---|---|---|
 | G0 | Does `obsidian://new` + `&clipboard` work on the Find N6? What is the reliable `content=` size limit? Is the vendored reader viable in a WebView? | **CLOSED — passed.** Spikes A and B both pass; the reader renders on all four test pages. Both trade-offs signed off by Johan → D20 (inline CSS) and D21 (Trusted Types). M0 ends here per D22. **Next: M1.** | A: 2026-08-31, B: 2026-08-31, closed: 2026-08-31 |
-| G1 | Is reader parity good enough to build on (vs. reworking Layer B)? | — | — |
+| G1 | Is reader parity good enough to build on (vs. reworking Layer B)? | **CLOSED — passed.** Johan read real articles on the Find N6 and ruled the reader good enough to build on. Layer B stays as designed; D26's rework path (render into a separate document) stays dormant unless real reading shows extraction timing recurring. Three M1 acceptance boxes were still unticked at the gate (the three apps' own share sheets, the transcript on device since B3, cookies against a real login) — carried into M2's device work as background checks, Johan's call. **Next: M2.** | 2026-09-01 |
 | G2 | v1 ship review: app name + icon chosen; post-v1 order reconfirmed | — | — |
 
 ### G0 / Spike A findings — 2026-08-31, Find N6 (CPH2765), Android 16 / API 36, vault `Sanctum`
@@ -276,14 +277,11 @@ ellipsizes.
   runs too**, so it is a non-fatal step in a fallback chain, not a cause. (An earlier reading of this
   session treated it as the cause and wrongly concluded the transcript was broken; the correction is
   recorded here so nobody re-derives it.)
-- **Consequence for M1.6, and it is a sharp one.** M1.6 currently says "settle briefly (rAF + short
-  delay for SPA hydration)". On YouTube the needed settle is somewhere between 6 and 15 seconds — far
-  beyond any delay worth blocking the reader on. So the fixed delay cannot be the mechanism that makes
-  YouTube work: either the re-extract action carries it (and needs to be prominent, not a hidden
-  fallback), or extraction waits on a readiness signal rather than a timer. *(Both options died:
-  re-extract is not buildable — D26 — and the recourse is Reload. Left as written because it is what
-  was concluded at the time.)* **Design input for M1.6,
-  not a bug.**
+- **Consequence for M1.6.** On YouTube the needed settle is somewhere between 6 and 15 seconds — far
+  beyond any delay worth blocking the reader on, and beyond a realistic tap (2–5 s) too, so neither
+  a fixed delay nor the user-triggered toggle clears it. The two mechanisms proposed here at the
+  time (a prominent re-extract; extraction waiting on a readiness signal) both died at D26 — the
+  recovery is Reload → wait → tap Reader again.
 - **The interactive transcript layer never wires**, separately from the content. `reader-transcript.ts`
   builds a pinned player, auto-scroll and clickable segments, all of which need a
   `.youtube.transcript` element (`wireTranscript`'s first guard, line 52). No element on the rendered
@@ -293,8 +291,8 @@ ellipsizes.
   the content; the interactive layer is a nice-to-have — flag for M5 if it is ever wanted.**
 - **SPA reloads fire `onPageFinished` repeatedly** — github fired it four times for one navigation.
   The bundle's `obsidianReaderInitialized` guard held every time (each re-injection returned
-  `"object"` and did not replace the surface). ~~M1.6's re-extract action still needs to exist~~
-  (**D26: it does not, and cannot** — Reload carries the case), but re-injection itself is safe.
+  `"object"` and did not replace the surface): re-injection is safe. Re-extract itself cannot exist
+  (D26); Reload carries that case.
 
 **Both G0 trade-offs settled by Johan, 2026-08-31 — G0 is closed:**
 
@@ -405,7 +403,8 @@ jsbridge/
   src/vendor-globals.d.ts             ambients the vendored tree expects (chrome, the polyfill module)
   test/global-setup.ts                builds the bundle once, --prod, to .tmp/ (never the asset)
   test/extraction.test.ts             Defuddle over the fixtures, under jsdom
-  test/bundle.test.ts, bridge.test.ts, bootstrap.test.ts     linkedom + a VM sandbox
+  test/sandbox.ts                     the linkedom + VM sandbox bundle/bridge tests share
+  test/bundle.test.ts, bridge.test.ts, bootstrap.test.ts
   test/fixtures/*.html + README.md    captured pages, and what they cannot prove
   vendor/obsidian-clipper/            git submodule @ pin
 docs/plan/                            these documents
@@ -642,15 +641,15 @@ hand-written reader.
     discipline drifting on either side fails there rather than on the phone.
   - Measured on the Find N6: upstream's `Aa` panel wrote `fontSize` 16 → 18 through the bridge into
     `shared_prefs/clipper-storage.xml`, and a cold relaunch read it back.
-- **M1.4 — Production bundle. Substantially done; one question open.** SCSS compiled, sourcemaps
+- **M1.4 — Production bundle. DONE (2026-09-01).** SCSS compiled, sourcemaps
   opt-in via `build:debug`, output committed, `npm run build` / `npm run verify` (`just jsbuild` /
   `just jsverify`) in place since M0.
   - **Lucide turned out to be a non-issue.** The reader builds its toolbar SVGs inline with its own
     `createSVG`; `lucide` is imported only by `core/settings.ts` and `core/highlights.ts`, which are
     extension pages we do not bundle. Measured from the esbuild metafile: **lucide contributes 0
     bytes**, as do the `src/icons/*.png` extension icons. Nothing to wire in.
-  - ~~**OPEN — which bundle does a release APK ship?**~~ **Settled → D28: the committed artifact is
-    the production build** (1210 KB minified, down from 1995 KB). `npm run build` and `just jsbuild`
+  - **Which bundle does a release APK ship? Settled → D28: the committed artifact is the
+    production build** (1210 KB minified, down from 1995 KB). `npm run build` and `just jsbuild`
     now mean `--prod`; `just jsbuild-debug` is the local Layer B override and `just jsverify` will
     call it dirty, which is the point. `build.mjs` gained `--outfile` so the test suite builds
     `--prod` to `jsbridge/.tmp/` instead of overwriting the committed asset — previously every
@@ -675,10 +674,13 @@ hand-written reader.
     hardcoding English. The clip dropdown and the `Aa` panel's "Settings" row (which opens the
     *extension's* options page) go by CSS, their classes being unique. **The toolbar in M1 is
     therefore TOC + `Aa`, both fully working.**
-- **M1.6 — Injection and the reader toggle.** On `onPageFinished`: inject the bundle (idempotent —
-  upstream already guards with `obsidianReaderInitialized`; B3 saw github fire `onPageFinished` four
-  times for one navigation and the guard held). **Do not toggle automatically (D24).** The page
-  renders normally and the shell offers a "Reader" toggle; `__clipper.toggle()` runs when Johan taps.
+- **M1.6 — Injection and the reader toggle. DONE (2026-09-01).** On `onPageFinished`: inject the
+  bundle (idempotent — upstream already guards with `obsidianReaderInitialized`; B3 saw github fire
+  `onPageFinished` four times for one navigation and the guard held). **Do not toggle automatically
+  (D24).** The page renders normally and the shell offers a "Reader" toggle; `__clipper.toggle()`
+  runs when Johan taps. A too-early tap is recovered with the shell bar's **Reload** → wait → tap
+  **Reader** again; re-extract cannot exist, and D26 holds the receipts. Unbuilt toolbar controls
+  are hidden, not no-op'd — settled and implemented at M1.5.
 
   **The settle problem does not go away, and a tap does not solve it.** B3 measured the YouTube
   transcript absent at a 6 s settle and present at 15 s. Realistic tap latency — see the page, find
@@ -688,17 +690,9 @@ hand-written reader.
   unmeasured** (Johan, 2026-09-01): it is a function of network conditions, device power and YouTube's
   own latency, so a number measured on one setup would not generalise and would invite building
   against it. Do not re-propose narrowing it — the 6 s/15 s bracket is all the precision this needs.
-
-  **The recovery is Reload, not re-extract — D26.** This task used to call for a re-extract action
-  inside reader mode. It is not buildable: `Reader.apply` empties the body and keeps no copy of the
-  original, `cleanupScripts` clears the page's timers, and upstream's own `restore` recovers the page
-  only by reloading. Once the reader is on there is nothing left to re-extract *from* and nothing
-  still hydrating. A too-early tap is recovered with the shell bar's **Reload** → wait → tap
-  **Reader** again. Toolbar buttons whose milestones haven't arrived (pen → M4, Aa → M5) are hidden or
-  no-op with a "coming later" toast — decide which looks less broken when wiring.
 - **M1.7 — Fixture harness. DONE (2026-09-01).** `test/extraction.test.ts` runs Defuddle over five
   captured pages and snapshots the result; `test/fixtures/README.md` records how each was captured
-  and what it cannot prove. 50 tests across 6 files.
+  and what it cannot prove. 52 tests across 6 files (as of 2026-09-01).
   - **jsdom, not linkedom.** Defuddle needs more DOM than linkedom provides, and upstream's own
     DOM-dependent tests declare `@vitest-environment jsdom` for the same reason. linkedom stays where
     it suffices — the bundle tests, which only evaluate and probe.
@@ -729,9 +723,9 @@ hand-written reader.
     readable character. **So M2.5's bookmark fallback must trigger on empty *text*, never on an empty
     content string** — that check would not fire here.
 - **M1.8 — Foldable pass. DONE (2026-09-01), by Johan on the device.** Fold and unfold mid-article
-  "worked perfectly": the `configChanges` declaration (`screenSize|screenLayout|smallestScreenSize|
-  orientation|density|uiMode`) keeps the activity from being recreated, so the WebView and the
-  rendered reader survive the fold intact.
+  "worked perfectly": the `configChanges` declaration (`orientation|screenSize|screenLayout|
+  smallestScreenSize|keyboardHidden|density|uiMode`) keeps the activity from being recreated, so the
+  WebView and the rendered reader survive the fold intact.
 
   The pass turned up two defects that had nothing to do with folding, both since fixed:
   - **Dark mode had no effect on the app at all** — and it was three independent omissions from
@@ -778,11 +772,13 @@ is merely believed to work.
 - [ ] Cookies persist across app relaunches (visit a login-walled site, relaunch, still signed in).
   *The plumbing is in (`setAcceptCookie`, third-party cookies, `flush()` in `onPause`) but has never
   been exercised against a real login.*
-- [x] Fixture suite green; `npm run verify` proves the committed bundle matches sources. *50 tests,
-  6 files; `jsverify` exits 0.*
+- [x] Fixture suite green; `npm run verify` proves the committed bundle matches sources. *52 tests,
+  6 files as of 2026-09-01; `jsverify` exits 0.*
 - [x] Foldable pass (M1.8) holds. *Johan, 2026-09-01: fold/unfold mid-article works perfectly. The
   two defects the pass surfaced were unrelated to folding and are fixed — see M1.8.*
-- [ ] **GATE G1:** Johan reads a few real articles and rules the reader good enough to build on.
+- [x] **GATE G1:** Johan reads a few real articles and rules the reader good enough to build on.
+  *Passed 2026-09-01 — recorded in §2. The three unticked boxes above carried through the gate
+  deliberately; they are background checks for M2's device work, not blockers.*
 
 ## 8. M2 — Clip & Save (v1)
 
@@ -837,6 +833,9 @@ is merely believed to work.
   saved instance state (G0 landmine).
 - [ ] Vault automations fire (A5 re-check with real clips).
 - [ ] Second clip started from the share sheet while Obsidian is foregrounded works (round-trip focus).
+- [ ] Carried from M1 through G1 (§7): sharing from Chrome's, Firefox's and the YouTube app's own
+  share sheets; the YouTube transcript in reader on device; cookies surviving a relaunch against a
+  real login. Observe opportunistically during M2's device work.
 
 ## 9. M3 — Templates (v1)
 

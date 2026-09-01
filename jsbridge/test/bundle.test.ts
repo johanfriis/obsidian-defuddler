@@ -1,9 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runInNewContext } from 'node:vm';
-import { parseHTML } from 'linkedom';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { createSandbox } from './sandbox';
 
 // Playbook M0/B1: prove the bundle builds from the pinned submodule and evaluates into a DOM
 // exposing window.__clipper. Reader.toggle itself needs a real browser — that is B3, on device.
@@ -23,48 +22,14 @@ beforeAll(() => {
 }, 120_000);
 
 /**
- * Evaluates the bundle once against a linkedom document with the browser globals it touches, and
- * hands back probes into that one context.
- *
- * Deliberately a single shared context rather than one per test: linkedom's `Window` is a proxy
- * that shares its property namespace across `parseHTML` calls, so `window.__clipper` set on one
- * "fresh" window is visible on the next, and a second bundle evaluation would silently keep the
- * first one's closures. One context is also ~12x less work — this bundle is ~2 MB.
+ * Evaluates the bundle once into the shared sandbox (see test/sandbox.ts for why once) and hands
+ * back probes into that one context.
  *
  * Assertions go through `run()` — a string in, a primitive out — which is the same shape as the
  * PROBE the device harness (SpikeBActivity) sends through `evaluateJavascript`.
  */
 function createContext() {
-  const { window, document } = parseHTML('<html><head></head><body><p>hi</p></body></html>');
-
-  const sandbox: Record<string, unknown> = {
-    window,
-    document,
-    navigator: { language: 'en-GB', userAgent: 'node' },
-    console,
-    setTimeout,
-    clearTimeout,
-    queueMicrotask,
-    requestAnimationFrame: (fn: () => void) => setTimeout(fn, 0),
-    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
-    Blob: function Blob(this: { parts: string[] }, parts: string[]) {
-      this.parts = parts;
-    },
-    // Stands in for the browser's blob-URL minting, keeping the text where a probe can read it.
-    URL: {
-      createObjectURL: (blob: { parts: string[] }) => {
-        const w = window as unknown as { __blobs?: string[] };
-        (w.__blobs ??= []).push(blob.parts[0]);
-        return `blob:stub/${w.__blobs.length}`;
-      },
-    },
-  };
-  sandbox.globalThis = sandbox;
-  sandbox.self = sandbox;
-  Object.setPrototypeOf(sandbox, window);
-
-  const evaluate = (js: string, filename: string) =>
-    runInNewContext(js, sandbox, { filename });
+  const { evaluate } = createSandbox();
 
   evaluate(source, 'clipper-bundle.js');
 

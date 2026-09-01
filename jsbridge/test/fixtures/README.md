@@ -9,9 +9,14 @@ as a moved snapshot rather than as a surprise on the phone.
 `curl` with the app's own user-agent, on 2026-09-01:
 
 ```bash
-UA="Mozilla/5.0 (Linux; Android 16; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36"
+UA="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36"
 curl -sSL -A "$UA" "<url>" -o <name>.html
 ```
+
+The string tracks `CHROME_MOBILE_UA` in `ReaderActivity.kt` — `Android 10; K` is Chrome's frozen
+reduced-UA pair, sent by every real Chrome on every device. The five committed fixtures predate
+that correction and were captured with `Android 16; K`; servers treat the two identically, so they
+were not re-captured.
 
 The source URL for each file is in `SOURCE_URLS` in the test — Defuddle needs it for the domain and
 for resolving relative links, so a fixture without one is not usable.

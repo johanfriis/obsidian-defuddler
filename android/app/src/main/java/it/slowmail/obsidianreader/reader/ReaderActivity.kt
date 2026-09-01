@@ -115,11 +115,13 @@ class ReaderActivity : ComponentActivity() {
 
 /**
  * Current Chrome-mobile UA with no `; wv` token — sites that treat WebViews differently (or block
- * them outright) see a normal mobile Chrome. A settings override lands with the rest of settings
- * in M2.4.
+ * them outright) see a normal mobile Chrome. `Android 10; K` is deliberate: Chrome's reduced UA
+ * freezes exactly that pair on every device and OS version, so any other value is a string no
+ * real Chrome sends — a fingerprint, not a disguise. A settings override lands with the rest of
+ * settings in M2.4.
  */
 private const val CHROME_MOBILE_UA =
-    "Mozilla/5.0 (Linux; Android 16; K) AppleWebKit/537.36 (KHTML, like Gecko) " +
+    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) " +
         "Chrome/140.0.0.0 Mobile Safari/537.36"
 
 /** How long to wait for the bundle's `clipperReaderApplied` message before giving up on it and
@@ -138,6 +140,8 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
     val bridgeToken = remember { UUID.randomUUID().toString() }
     // Handed to the bundle so the reader's "auto" appearance follows the app instead of asking the
     // WebView, which cannot answer honestly without algorithmic darkening (see the WebView setup).
+    // Captured when the WebView factory runs: uiMode is in configChanges, so a mid-session theme
+    // flip does not recreate this activity and only reaches the reader on the next share.
     val darkMode = isSystemInDarkTheme()
     // Completed by the bundle's `clipperReaderApplied` message; created before the toggle is fired
     // so the message can never arrive before there is something to receive it.
@@ -147,10 +151,20 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
     var readerActive by remember { mutableStateOf(false) }
     var toggleInFlight by remember { mutableStateOf(false) }
 
-    fun loadFresh(target: String) {
-        loadError = null
+    // A full reload of whatever the WebView currently shows. Also the recovery for a reader tapped
+    // before the page settled (D26): reload, wait, tap Reader again.
+    fun reload() {
+        val web = webView ?: return
         readerActive = false
-        webView?.loadUrl(target)
+        web.loadUrl(web.url ?: url)
+    }
+
+    // Retry after a load error. The error pane replaced the WebView in composition and onRelease
+    // destroyed it (after onRenderProcessGone the framework forbids reusing it anyway), so clearing
+    // the error is what recreates one: the factory runs again and starts from the shared URL.
+    fun retryFromError() {
+        readerActive = false
+        loadError = null
     }
 
     fun toggleReader() {
@@ -167,7 +181,13 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
                         // timeout ask the page directly rather than assuming the worst.
                         val rendered = withTimeoutOrNull(READER_APPLIED_TIMEOUT_MS) { signal.await() }
                             ?: (web.evaluate(ClipperBundle.READER_RENDERED_JS) == "true")
-                        readerActive = rendered
+                        // `rendered` and the reader-active class can disagree: apply swallows its
+                        // own errors (class set, nothing built), and an apply slower than the
+                        // timeout can finish after the probe said no. The class decides what the
+                        // next tap does (apply vs restore), so it is what the button must track;
+                        // `rendered` only decides whether to report failure.
+                        readerActive =
+                            rendered || web.evaluate(ClipperBundle.READER_ACTIVE_JS) == "true"
                         if (!rendered) {
                             // Honest failure beats a button that lies about its state (D2's spirit).
                             Toast.makeText(context, R.string.reader_failed, Toast.LENGTH_LONG).show()
@@ -194,19 +214,25 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
                 readerActive = readerActive,
                 enabled = webView != null && loadError == null && !toggleInFlight,
                 onToggleReader = ::toggleReader,
-                // A full reload. Also the recovery for a reader tapped before the page settled
-                // (D26): reload, wait, tap Reader again.
-                onReload = { webView?.let { loadFresh(it.url ?: url) } },
+                onReload = ::reload,
             )
         },
     ) { insets ->
         Box(Modifier.fillMaxSize().padding(insets)) {
             val error = loadError
             if (error != null) {
-                LoadErrorPane(error) { loadFresh(url) }
+                LoadErrorPane(error, onRetry = ::retryFromError)
             } else {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
+                    // Runs when a load error swaps the pane in, and when the screen goes away. A
+                    // WebView holds native resources GC cannot see, and one whose renderer died
+                    // must never be reused — destroy it, and drop the stale reference so nothing
+                    // pokes a dead view.
+                    onRelease = { view ->
+                        if (webView === view) webView = null
+                        view.destroy()
+                    },
                     factory = { ctx ->
                         WebView(ctx).apply {
                             settings.javaScriptEnabled = true
