@@ -10,9 +10,13 @@ companions hold what this one deliberately does not:
   statement, the scope guard, and the **legend for the three `Obsidian Web Clipper UI - *.jpg`
   screenshots** referenced throughout this document (see §16).
 
-**Definition of done for v1:** Johan shares a link from any app on the Find N6 → the reader opens →
-one tap opens the clip sheet → the note lands in the vault shaped by his template, with his usual vault
-automations firing. Happy path well under 15 seconds.
+**Definition of done for v1:** Johan shares a link from any app on the Find N6 → the page opens in the
+app → one tap turns on the reader (D24) → one tap opens the clip sheet → the note lands in the vault
+shaped by his template. Happy path well under 15 seconds.
+
+*(Two corrections since this was first written: the reader is a deliberate tap rather than automatic —
+**D24** — and "with his usual vault automations firing" was removed because G0/A5 measured that
+`obsidian://new` does not fire Templater's on-create trigger. See **D2** and §2.)*
 
 ## Pinned upstream (verified 2026-08-30)
 
@@ -71,6 +75,7 @@ everything else was decided by Johan explicitly.
 | D18 | `SafWriter` (M2.4) and SAF hardening (M6.3) deferred, not deleted | Follows from D2: with no SAF save path there is nothing to write or harden. **The original justification (SAF bypasses Obsidian's triggers) turned out not to separate the two options — A5 showed `obsidian://` bypasses them too.** What the deferral now rests on is cost: `SafWriter` reimplements append/overwrite that Obsidian gives us free, plus tree-URI permission plumbing to build and harden. Two accepted trades: (1) `obsidian://` always foregrounds Obsidian (A4) — SAF would have allowed a true background save; (2) the URI contract is now a single point of failure — acceptable because notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss. |
 | D19 | Bundle English UI strings only (`LOCALES = ['en']`) and highlight.js's ~40-language `lib/common` rather than the full ~190 | Johan's call, 2026-08-31, confirming the B1 trims. Both degrade gracefully — `getMessage` falls back to English, `highlightElement` leaves an unregistered language unstyled — and both are one-line reverts in `jsbridge/build.mjs`. |
 | D20 | Reader CSS is delivered as an inline `<style>` by default, not upstream's blob-URL `<link>` — for `reader.css` and `highlighter.css` alike | Johan's call, 2026-08-31 at G0. Measured: the blob path is refused by any page with a `style-src` that omits `blob:` (github.com), leaving the reader stripped and unstyled. Inlining costs nothing on pages without CSP, and detecting a refusal in order to fall back is harder than always inlining. Implemented without patching upstream — see `installStyle` in `jsbridge/src/bundle-entry.ts`. |
+| D24 | **Reader mode is user-triggered, not automatic.** The shared page loads and renders normally; the app shell shows a "Reader" toggle. Recourse if extraction is incomplete: wait and re-extract | Johan's call, 2026-09-01, resolving the M1.6 problem B3 opened. Chosen for the failure mode, not the timing: a page that extracts badly leaves Johan looking at the real page he can simply not toggle, instead of dumping him into a broken reader he has to escape. It also makes an on-page login form usable for free, which is what is left of M6.1 after D23. **Note the timing argument does *not* hold** — see M1.6. |
 | D23 | **No generic browser UI, ever.** No URL bar, no back/forward, no tabs, history or downloads. If a page cannot be read without signing in, that is a workaround Johan performs outside the app — or the clip does not happen | Johan's call, 2026-08-31, when the question of pulling M6.1's browsing strip into M1 was raised. He clips from logged-in sites rarely, and a browser surface is far larger than it looks (tabs, downloads, uploads, fullscreen video, permission prompts, PDFs). This bounds M6.1 and overrides the "normal browser chrome" mitigation the Architecture doc used to propose. |
 | D21 | Install a pass-through Trusted Types `default` policy before the reader runs | Johan's call, 2026-08-31 at G0. Without it, pages sending `require-trusted-types-for 'script'` (YouTube) kill the reader outright — Defuddle's `innerHTML` and `Reader.apply`'s `DOMParser` both throw and nothing renders. A browser extension never meets this because its content script runs in an isolated world Trusted Types does not police; our main-world injection is policed. **The accepted trade:** the policy switches off the page's own XSS guard for the life of that document. Johan's reasoning — the reader/clip session is ephemeral, the page is one he chose, and we already inject a bundle that rewrites the whole DOM. Only creatable where the page sends no `trusted-types` directive naming allowed policies; where it is refused we log and the page fails visibly. See `installTrustedTypesPolicy` in `jsbridge/src/bundle-entry.ts`. |
 | D22 | B4's extraction-quality pass is folded into M1.7's fixture harness rather than run as a throwaway spike *(default)* | B3 already exercised extraction on four real pages including the two hard ones (CSP-strict, Trusted Types), so B4's remaining value is markdown/metadata quality on saved fixtures — which is exactly M1.7's job. Same work, but the output is kept and guards every future submodule bump (D14). M0 therefore ends at G0. Two B3 findings carry into M1.7 as fixture cases: unflattened shadow DOM on github, and the YouTube settle-time question. |
@@ -554,14 +559,23 @@ hand-written reader.
   `npm run build` and `npm run verify` (rebuild + `git diff --exit-code` on the asset).
 - **M1.5 — Trademark sweep.** Replace the Obsidian gem icon in the vendored toolbar with a placeholder
   (final icon at G2). Grep vendored assets for other Obsidian marks. Lucide icons stay (ISC).
-- **M1.6 — Injection.** On `onPageFinished`: inject bundle (idempotent — upstream already guards with
-  `obsidianReaderInitialized`; B3 saw github fire `onPageFinished` four times for one navigation and
-  the guard held), then `__clipper.toggle()`.
-  **Revised by B3 (§2): a short settle delay cannot be the mechanism.** YouTube needs 6–15 s before
-  the transcript is extractable — far beyond anything worth blocking the reader on. So either the
-  "re-extract" action carries this case and must be prominent rather than a hidden fallback, or
-  extraction waits on a readiness signal instead of a timer. Decide when building M1.6; do not just
-  pick a bigger number. Toolbar buttons
+- **M1.6 — Injection and the reader toggle.** On `onPageFinished`: inject the bundle (idempotent —
+  upstream already guards with `obsidianReaderInitialized`; B3 saw github fire `onPageFinished` four
+  times for one navigation and the guard held). **Do not toggle automatically (D24).** The page
+  renders normally and the shell offers a "Reader" toggle; `__clipper.toggle()` runs when Johan taps.
+
+  **The settle problem does not go away, and a tap does not solve it.** B3 measured the YouTube
+  transcript absent at a 6 s settle and present at 15 s. Realistic tap latency — see the page, find
+  the button, press it — is roughly 2–5 s, i.e. *below* the value already known to fail. So a
+  user-triggered toggle buys less time than it appears to, and on a fast tap YouTube will still
+  extract without its transcript. (The exact threshold between 6 s and 15 s was not narrowed; the
+  device was disconnected before it could be measured. Worth pinning down during M1.6.)
+
+  **What actually carries the case is re-extract**, so build it properly rather than as a hidden
+  fallback: an action available *inside* reader mode that re-runs extraction against the current DOM
+  without a page reload. By the time Johan is reading, well over 15 s has usually passed, so
+  re-extract is what recovers a late-hydrating transcript. Toggling off is not a substitute — upstream
+  restores the page by reloading it, which throws away the hydration that was the point of waiting. Toolbar buttons
   whose milestones haven't arrived (pen → M4, Aa → M5) are hidden or no-op with a "coming later" toast —
   decide which looks less broken when wiring.
 - **M1.7 — Fixture harness.** `jsbridge/test/`: save 4–5 fixture pages (news article, YouTube watch
