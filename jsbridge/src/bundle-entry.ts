@@ -23,6 +23,8 @@ interface ClipperBundle {
   isActive: () => boolean;
   /** Whether the reader actually built its container (as opposed to merely being toggled). */
   rendered: () => boolean;
+  /** Answers `prefers-color-scheme` with the app's theme; see the function's comment. */
+  installColorSchemeBridge: (dark: boolean) => void;
   installReaderCss: () => boolean;
   installHighlighterCss: () => boolean;
   installTrustedTypesPolicy: () => string;
@@ -204,6 +206,46 @@ function hideUnbuiltControls(doc: Document): number {
   return hidden;
 }
 
+/**
+ * The app's own dark-mode state, handed in as a closure parameter by the Kotlin injection wrapper
+ * (undefined anywhere else, e.g. in tests).
+ */
+declare const __clipperDarkMode: boolean | undefined;
+
+/**
+ * Makes `prefers-color-scheme` answer with the app's theme.
+ *
+ * Upstream's reader resolves its `auto` appearance through
+ * `matchMedia('(prefers-color-scheme: dark)')`. In a WebView that query reports `light` no matter
+ * the system setting unless algorithmic darkening is enabled — and enabling that mangles raw pages
+ * whose dark support WebView cannot detect, which is measurably worse than leaving them light
+ * (see ReaderActivity). So the app tells us its theme and we answer the query ourselves.
+ *
+ * Only the `prefers-color-scheme` query is intercepted; every other query passes through to the
+ * real implementation untouched. The page sees this too, which is a feature rather than a leak: a
+ * site that picks its theme from the same query gets to apply *its own* dark stylesheet, which is
+ * exactly the outcome algorithmic darkening was a poor substitute for.
+ *
+ * Johan's explicit Light/Dark choice in the reader's Aa panel still wins — that path never consults
+ * the media query at all.
+ */
+function installColorSchemeBridge(dark: boolean): void {
+  const real = window.matchMedia.bind(window);
+  const patched = (query: string): MediaQueryList => {
+    const list = real(query);
+    if (!/prefers-color-scheme/i.test(query)) return list;
+    const wants = /dark/i.test(query) ? dark : !dark;
+    return new Proxy(list, {
+      get(target, prop, receiver) {
+        if (prop === 'matches') return wants;
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  };
+  window.matchMedia = patched as typeof window.matchMedia;
+}
+
 /** Mirrors reader-script.ts: it tracks reader state with a class on documentElement. */
 function isActive(): boolean {
   return document.documentElement.classList.contains('obsidian-reader-active');
@@ -253,11 +295,14 @@ async function toggle(cssMode: CssMode = 'inline'): Promise<boolean> {
 // Idempotent: Kotlin re-injects on every onPageFinished, and SPA navigation can fire it twice.
 if (!window.obsidianReaderInitialized) {
   window.obsidianReaderInitialized = true;
+  // Before anything reads the query — upstream's reader consults it during apply.
+  if (typeof __clipperDarkMode === 'boolean') installColorSchemeBridge(__clipperDarkMode);
   window.__clipper = {
     Reader,
     toggle,
     isActive,
     rendered: readerRendered,
+    installColorSchemeBridge,
     installReaderCss,
     installHighlighterCss,
     installTrustedTypesPolicy,

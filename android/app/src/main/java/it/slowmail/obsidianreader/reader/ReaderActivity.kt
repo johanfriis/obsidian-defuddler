@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,8 +43,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.webkit.WebSettingsCompat
-import androidx.webkit.WebViewFeature
 import it.slowmail.obsidianreader.BuildConfig
 import it.slowmail.obsidianreader.R
 import it.slowmail.obsidianreader.ui.ClipperTheme
@@ -137,6 +136,9 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
     // One token per activity, handed to the bundle as a closure parameter so page script cannot
     // read it back off `window`. See AndroidBridge's class comment.
     val bridgeToken = remember { UUID.randomUUID().toString() }
+    // Handed to the bundle so the reader's "auto" appearance follows the app instead of asking the
+    // WebView, which cannot answer honestly without algorithmic darkening (see the WebView setup).
+    val darkMode = isSystemInDarkTheme()
     // Completed by the bundle's `clipperReaderApplied` message; created before the toggle is fired
     // so the message can never arrive before there is something to receive it.
     var pendingApply by remember { mutableStateOf<CompletableDeferred<Boolean>?>(null) }
@@ -210,19 +212,31 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.userAgentString = CHROME_MOBILE_UA
+                            // Without these a WebView ignores the page's <meta name="viewport">
+                            // entirely and lays out at the control's width in CSS pixels, which is
+                            // why YouTube arrived clipped and mis-sized. Every real browser honours
+                            // the tag; a reader that shows the page before the reader is a tap away
+                            // (D24) has to look like one.
+                            settings.useWideViewPort = true
+                            settings.loadWithOverviewMode = true
                             settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
-                            // Without this a WebView reports `prefers-color-scheme: light` no
-                            // matter the system setting, so the reader's own dark themes never
-                            // engage (M5.2). With it, and the app on a dark theme, WebView honours
-                            // a page's own dark support first and only falls back to darkening a
-                            // page algorithmically when it has none — which is the behaviour M5.2
-                            // wanted: the reader owns its colours, and a raw page that has no dark
-                            // mode of its own still does not flash white.
-                            if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
-                                WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
-                            }
+                            // Algorithmic darkening is deliberately NOT enabled, after trying it.
+                            //
+                            // It is the only switch that makes a WebView report
+                            // `prefers-color-scheme: dark`, so it is tempting: it is what made the
+                            // reader go dark. But WebView only defers to a page's own dark theme
+                            // when the page declares `color-scheme`; a page that merely *has* a
+                            // dark mode (stephango drives its own from JS, with no such
+                            // declaration) gets machine-darkened instead — dark grey text on a dark
+                            // background, measurably worse than the light page it replaced.
+                            //
+                            // So the raw page is left exactly as its author drew it, and the reader
+                            // is told the app's theme directly instead — see `darkMode` in
+                            // ClipperBundle.injectionScript. The reader is the surface Johan reads
+                            // on; the raw page is a waypoint, and a bright waypoint beats an
+                            // unreadable one.
 
                             // M1.3. Attached before the first load, since the interface only
                             // applies to pages loaded after it is added. WebView calls in on its
@@ -250,10 +264,15 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
                                     // guard held across the four onPageFinished calls github fired
                                     // for a single navigation (G0/B3).
                                     view.evaluateJavascript(
-                                        ClipperBundle.injectionScript(ctx, bridgeToken),
+                                        ClipperBundle.injectionScript(ctx, bridgeToken, darkMode),
                                     ) { result ->
                                         if (result.unquote() != "object") {
                                             android.util.Log.w("Reader", "bundle injection -> $result")
+                                        }
+                                    }
+                                    if (BuildConfig.DEBUG) {
+                                        view.evaluateJavascript(ClipperBundle.LAYOUT_PROBE_JS) {
+                                            android.util.Log.i("Reader", "layout ${it.unquote()}")
                                         }
                                     }
                                 },

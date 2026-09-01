@@ -98,6 +98,7 @@ everything else was decided by Johan explicitly.
 | D26 | **No re-extract action; Reload is the recovery for a too-early reader tap** | Johan's call, 2026-09-01, on evidence that M1.6's re-extract is not buildable. `Reader.apply` ends its cleanup with `doc.body.textContent = ''` and stores no copy of the original (`utils/reader.ts` ~L2130); `cleanupScripts` (~L1376) clears every page timer; `restore` (~L2383) recovers the page only by `window.location.reload()`. So once the reader is on, the page's DOM *and* its running scripts are gone: a late-hydrating YouTube transcript can never arrive, and a re-extract would re-parse the reader's own output. The recovery is Reload → wait → tap Reader, which toggling the reader off already does internally. The architecture where re-extract genuinely works — render into a separate document via `Reader.preExtractedContent` / `reader-view.ts` / `toggleReaderPageIframe`, leaving the original page alive and hydrating underneath — is a Layer B rework, **not carried to G1 as an agenda item**; revisit only if reading real articles shows extraction timing is a recurring problem. |
 | D27 | **`AndroidBridge` is gated on a per-activity token, handed to the bundle as a closure parameter** *(default)* | `addJavascriptInterface` attaches the bridge to the main world of every page the WebView loads, so a hostile page's script can call it exactly as our bundle does. minSdk 31 means only `@JavascriptInterface` methods are reachable (no reflection), so the exposure is bounded to what we write — but what we write grows a save-to-vault path in M2. The token is passed as a closure parameter by the injection wrapper and never assigned to `window`, which page script could read. **Residual, recorded rather than papered over: anything on `window.__clipper` is reachable by the page, including our storage and `sendMessage`. M2 must never treat an inbound message as authorisation to save** — the save is initiated by a tap on the Kotlin side. |
 | D28 | **The committed `clipper-bundle.js` is the production build** — minified, `DEBUG_MODE` off. `just jsbuild-debug` is a local-only override | Johan's call, 2026-09-01, closing M1.4's open question. There is one `assets/` directory, so whatever is committed is what a release APK ships; committing the debug build meant shipping ~800 KB of extra bytes with verbose logging on. The cost is B2's deliberate choice of an unminified artifact for unaided `chrome://inspect` reading — recovered by `just jsbuild-debug` (and `jsbuild-debug-map` for sourcemaps), which `just jsverify` will then correctly report as dirty. The rejected alternative was a Gradle-driven `--prod` build on the release variant, which would have made release builds require Node — something §14 promises they never do. **Consequence for the test suite:** it builds `--prod` to `jsbridge/.tmp/` via `--outfile`, so running tests exercises exactly what ships and can never leave a debug artifact in the tree. |
+| D29 | **No algorithmic darkening. The raw page renders as authored, and the reader is told the app's theme directly** *(default)* | **Reverses the mechanism recorded under M1.8 earlier the same day (2026-09-01), on Johan's report that a raw page in dark mode was "almost unreadable".** `setAlgorithmicDarkeningAllowed` is the only switch that makes a WebView report `prefers-color-scheme: dark`, which is why it appeared to be the answer — it is what made the reader go dark. But WebView only defers to a page's own dark theme when the page declares `color-scheme`; stephango drives its theme from JS and declares nothing, so it was machine-darkened into dark-grey text on a dark background. Measured worse than the light page it replaced. The reader now learns the theme from a `darkMode` closure parameter and answers `prefers-color-scheme` itself (`installColorSchemeBridge`), so both surfaces are right: raw pages exactly as their authors drew them, reader properly dark. A site that picks its theme from the same query now gets to apply *its own* dark stylesheet — the thing algorithmic darkening was a poor substitute for. Johan's explicit Light/Dark choice in the `Aa` panel is untouched; it never consults the query. |
 | D23 | **No generic browser UI, ever.** No URL bar, no back/forward, no tabs, history or downloads. If a page cannot be read without signing in, that is a workaround Johan performs outside the app — or the clip does not happen | Johan's call, 2026-08-31, when the question of pulling M6.1's browsing strip into M1 was raised. He clips from logged-in sites rarely, and a browser surface is far larger than it looks (tabs, downloads, uploads, fullscreen video, permission prompts, PDFs). This bounds M6.1 and overrides the "normal browser chrome" mitigation the Architecture doc used to propose. |
 | D21 | Install a pass-through Trusted Types `default` policy before the reader runs | Johan's call, 2026-08-31 at G0. Without it, pages sending `require-trusted-types-for 'script'` (YouTube) kill the reader outright — Defuddle's `innerHTML` and `Reader.apply`'s `DOMParser` both throw and nothing renders. A browser extension never meets this because its content script runs in an isolated world Trusted Types does not police; our main-world injection is policed. **The accepted trade:** the policy switches off the page's own XSS guard for the life of that document. Johan's reasoning — the reader/clip session is ephemeral, the page is one he chose, and we already inject a bundle that rewrites the whole DOM. Only creatable where the page sends no `trusted-types` directive naming allowed policies; where it is refused we log and the page fails visibly. See `installTrustedTypesPolicy` in `jsbridge/src/bundle-entry.ts`. |
 | D22 | B4's extraction-quality pass is folded into M1.7's fixture harness rather than run as a throwaway spike *(default)* | B3 already exercised extraction on four real pages including the two hard ones (CSP-strict, Trusted Types), so B4's remaining value is markdown/metadata quality on saved fixtures — which is exactly M1.7's job. Same work, but the output is kept and guards every future submodule bump (D14). M0 therefore ends at G0. Two B3 findings carry into M1.7 as fixture cases: unflattened shadow DOM on github, and the YouTube settle-time question. |
@@ -707,12 +708,21 @@ hand-written reader.
     activities called bare `MaterialTheme { }`, which silently means `lightColorScheme()` always;
     and the WebView never opted into algorithmic darkening, so it reported
     `prefers-color-scheme: light` regardless of the system. Fixed with a `values-night` theme, a
-    `ClipperTheme` composable, and `WebSettingsCompat.setAlgorithmicDarkeningAllowed`. **M5.2's
-    concern turns out to be handled by the platform**: with darkening allowed, WebView honours a
-    page's *own* dark support first and only darkens algorithmically where a page has none — so the
-    reader keeps the colours it owns. Verified on device.
+    `ClipperTheme` composable, and — at first — `setAlgorithmicDarkeningAllowed`. **That third part
+    was wrong and is reversed by D29**: it fixed the reader and broke every raw page whose dark
+    support WebView cannot detect. M5.2's original instinct to keep darkening off was right; what it
+    lacked was the other half, telling the reader the theme directly.
   - **"The clipper closes when I switch apps"** — see the M1.1 trap above. Not a crash: the process
     was still alive; the task was merely excluded from Recents and therefore unreachable.
+  - **YouTube looked badly rendered before the reader is toggled, and this one is not a bug of
+    ours.** A debug layout probe (`ClipperBundle.LAYOUT_PROBE_JS`, logged under `Reader` — the same
+    discipline as B3's probe) reports `innerWidth 350`, `dpr 3.25`, `scrollWidth 350` against
+    `clientWidth 351`: nothing overflows. **The cover screen is simply 350 CSS px wide**
+    (1140 physical ÷ 3.25), where most phones report 390–430, and YouTube's own title element clips
+    itself at that width — Chrome on this screen does the same. Two guesses were wrong on the way
+    here (`useWideViewPort`, then deferred `loadUrl`), which is why the probe exists now.
+    `useWideViewPort`/`loadWithOverviewMode` were set anyway and kept: a WebView that ignores a
+    page's `<meta viewport>` is wrong regardless of whether it caused this.
 
   Also added while chasing that one, and worth keeping although it was **not** the cause:
   `onRenderProcessGone` is now handled. A client that does not override it lets the framework kill
@@ -867,10 +877,11 @@ it is a check for a defect rather than anything to build.**
 - ~~**M5.2** Theme interplay: reader dark/light/auto vs. the app's own theme and Android's
   algorithmic darkening (keep darkening off for the reader WebView; the reader owns its colors).~~
   **Done at M1.8 (2026-09-01).** Dark mode did nothing at all until then — three omissions, listed
-  under M1.8. The original instinct to keep darkening *off* turned out to be the wrong lever:
-  `setAlgorithmicDarkeningAllowed(true)` is what lets the reader's own dark CSS engage, and WebView
-  only darkens algorithmically where a page has no dark support of its own. **M5 is now closed
-  entirely.**
+  under M1.8. **This task's instinct to keep darkening off was right, and a first attempt that
+  enabled it was reversed the same day — see D29.** Allowing it does make the reader's dark CSS
+  engage, but it machine-darkens any raw page whose dark support WebView cannot detect, which is how
+  a readable light page became unreadable. The reader is told the app's theme directly instead.
+  **M5 is now closed entirely.**
 - **M5.3** Acceptance: set a non-default style, kill the app, share a new link — style stuck.
   **Met on 2026-09-01** (fontSize 16 → 18, verified across a force-stop).
 

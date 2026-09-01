@@ -39,11 +39,16 @@ object ClipperBundle {
      * set, but not a closure variable, so the token cannot be recovered by page script and the
      * bridge refuses calls without it. The bundle is an IIFE evaluating to `undefined`, so a
      * trailing probe makes the `evaluateJavascript` callback carry a verdict instead of `null`.
+     *
+     * `darkMode` is the app's own theme. The reader's "auto" appearance would otherwise ask the
+     * WebView via `prefers-color-scheme`, which cannot answer honestly unless algorithmic darkening
+     * is enabled — and that mangles raw pages (see ReaderActivity's WebView setup). Telling the
+     * reader directly keeps both surfaces right.
      */
-    fun injectionScript(context: Context, bridgeToken: String): String =
-        "(function (__clipperBridgeToken) {\n" +
+    fun injectionScript(context: Context, bridgeToken: String, darkMode: Boolean): String =
+        "(function (__clipperBridgeToken, __clipperDarkMode) {\n" +
             source(context) +
-            "\n})(" + JSONObject.quote(bridgeToken) + ");" +
+            "\n})(" + JSONObject.quote(bridgeToken) + ", " + darkMode + ");" +
             "\n;(typeof window.__clipper);"
 
     /**
@@ -73,6 +78,34 @@ object ClipperBundle {
      * announces the *off* direction, and `apply` swallows its own errors, so this is ours.
      */
     const val ACTION_READER_APPLIED = "clipperReaderApplied"
+
+    /**
+     * Debug-only layout probe (M1.8 follow-up). Reports how the page actually laid itself out, so a
+     * complaint like "YouTube renders badly" is diagnosed with numbers rather than guesses — the
+     * same discipline as G0's B3 probe. Read it with `just log`.
+     */
+    const val LAYOUT_PROBE_JS = """
+(function () {
+  try {
+    var vp = document.querySelector('meta[name="viewport"]');
+    var de = document.documentElement;
+    return JSON.stringify({
+      innerWidth: window.innerWidth,
+      outerWidth: window.outerWidth,
+      scrollWidth: de.scrollWidth,
+      clientWidth: de.clientWidth,
+      bodyScrollWidth: document.body ? document.body.scrollWidth : -1,
+      dpr: window.devicePixelRatio,
+      visualViewport: window.visualViewport ? Math.round(window.visualViewport.width) : -1,
+      viewportMeta: vp ? vp.getAttribute('content') : '(none)',
+      prefersDark: window.matchMedia('(prefers-color-scheme: dark)').matches,
+      htmlBg: getComputedStyle(de).backgroundColor,
+      bodyBg: document.body ? getComputedStyle(document.body).backgroundColor : '(no body)',
+      bodyColor: document.body ? getComputedStyle(document.body).color : '(no body)'
+    });
+  } catch (e) { return 'PROBE THREW: ' + e; }
+})()
+"""
 
     /** Direct read of the same fact, for a timeout path that cannot wait for the message. */
     const val READER_RENDERED_JS = "(!!window.__clipper && window.__clipper.rendered())"

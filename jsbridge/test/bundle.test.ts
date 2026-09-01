@@ -240,6 +240,38 @@ describe('clipper-bundle', () => {
     expect(css).toContain('obsidian-reader-container');
   });
 
+  it('answers prefers-color-scheme with the app theme, passing other queries through', () => {
+    run(`window.__mmCalls = [];
+         window.matchMedia = function (q) {
+           window.__mmCalls.push(q);
+           return { matches: false, media: q, addEventListener: function () {}, removeEventListener: function () {} };
+         };
+         window.__clipper.installColorSchemeBridge(true);`);
+
+    // The app says dark, so the dark query matches and the light one does not...
+    expect(run('window.matchMedia("(prefers-color-scheme: dark)").matches')).toBe(true);
+    expect(run('window.matchMedia("(prefers-color-scheme: light)").matches')).toBe(false);
+    // ...and an unrelated query is left entirely to the real implementation.
+    expect(run('window.matchMedia("(min-width: 600px)").matches')).toBe(false);
+    expect(run('window.__mmCalls.length')).toBe(3);
+    // Non-`matches` members still work, so upstream's listener wiring is untouched.
+    expect(run('typeof window.matchMedia("(prefers-color-scheme: dark)").addEventListener')).toBe(
+      'function',
+    );
+    expect(run('window.matchMedia("(prefers-color-scheme: dark)").media')).toBe(
+      '(prefers-color-scheme: dark)',
+    );
+  });
+
+  it('reports light when the app is light', () => {
+    run(`window.matchMedia = function (q) {
+           return { matches: false, media: q, addEventListener: function () {}, removeEventListener: function () {} };
+         };
+         window.__clipper.installColorSchemeBridge(false);`);
+    expect(run('window.matchMedia("(prefers-color-scheme: dark)").matches')).toBe(false);
+    expect(run('window.matchMedia("(prefers-color-scheme: light)").matches')).toBe(true);
+  });
+
   it('installs a Trusted Types default policy where the page enforces them', () => {
     // YouTube sends `require-trusted-types-for 'script'`, which otherwise breaks Defuddle's
     // innerHTML writes and Reader.apply's DOMParser call. linkedom has no trustedTypes, so the
