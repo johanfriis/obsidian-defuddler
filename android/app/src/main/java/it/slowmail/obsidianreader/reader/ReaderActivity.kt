@@ -44,6 +44,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import it.slowmail.obsidianreader.BuildConfig
+import it.slowmail.obsidianreader.clipper.ClipSheet
 import it.slowmail.obsidianreader.R
 import it.slowmail.obsidianreader.ui.ClipperTheme
 import kotlinx.coroutines.CompletableDeferred
@@ -150,6 +151,9 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
     var loadError by remember { mutableStateOf<String?>(null) }
     var readerActive by remember { mutableStateOf(false) }
     var toggleInFlight by remember { mutableStateOf(false) }
+    // Non-null while upstream's clip sheet is up. Holds the page identity captured at the moment
+    // Clip was tapped, not a live read: the sheet is clipping the page as it was then.
+    var clipping by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     // A full reload of whatever the WebView currently shows. Also the recovery for a reader tapped
     // before the page settled (D26): reload, wait, tap Reader again.
@@ -165,6 +169,17 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
     fun retryFromError() {
         readerActive = false
         loadError = null
+    }
+
+    /**
+     * Open upstream's clip sheet over the current page (D25's third button, D31's hosting).
+     *
+     * The URL comes from the WebView rather than the activity's `url` extra, because a reader
+     * toggle or an in-page navigation may have moved on since the share.
+     */
+    fun openClipSheet() {
+        val web = webView ?: return
+        clipping = (web.url ?: url) to (web.title.orEmpty())
     }
 
     fun toggleReader() {
@@ -215,6 +230,7 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
                 enabled = webView != null && loadError == null && !toggleInFlight,
                 onToggleReader = ::toggleReader,
                 onReload = ::reload,
+                onClip = ::openClipSheet,
             )
         },
     ) { insets ->
@@ -331,6 +347,14 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
         }
     }
 
+    clipping?.let { (pageUrl, pageTitle) ->
+        ClipSheet(
+            pageUrl = pageUrl,
+            pageTitle = pageTitle,
+            onDismiss = { clipping = null },
+        )
+    }
+
     // System Back walks the WebView's own history where there is any, then leaves. That is an OS
     // gesture rather than chrome, so D23 is untouched — there are no back/forward buttons.
     BackHandler {
@@ -349,6 +373,7 @@ private fun ShellBar(
     enabled: Boolean,
     onToggleReader: () -> Unit,
     onReload: () -> Unit,
+    onClip: () -> Unit,
 ) {
     Column {
         HorizontalDivider()
@@ -371,7 +396,11 @@ private fun ShellBar(
             TextButton(onClick = onReload, enabled = enabled) {
                 Text(stringResource(R.string.action_reload))
             }
-            // `Clip` joins these in M2 (D25).
+            // The third and last button D25 allows. Available with the reader on or off: upstream's
+            // sheet clips whatever the page currently is, and both states are legitimate to clip.
+            TextButton(onClick = onClip, enabled = enabled) {
+                Text(stringResource(R.string.action_clip))
+            }
         }
     }
 }

@@ -7,9 +7,9 @@
   "scripts": {
     "build": "node build.mjs --prod",
     "build:debug": "node build.mjs",
-    "verify": "node build.mjs --prod && git add -N ../android/app/src/main/assets/clipper-bundle.js && git diff --exit-code -- ../android/app/src/main/assets/clipper-bundle.js",
+    "verify": "node build.mjs --prod && git add -N ../android/app/src/main/assets && git diff --exit-code -- ../android/app/src/main/assets",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node typecheck.mjs",
     "build:debug-sourcemap": "node build.mjs --sourcemap"
   },
   "devDependencies": {

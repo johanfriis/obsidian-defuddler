@@ -167,4 +167,36 @@ describe('AndroidBridge contract', () => {
   it('survives an unparseable message from Kotlin', () => {
     expect(() => run('window.__clipper.receive("{not json")')).not.toThrow();
   });
+
+  // storage.onChanged exists because upstream's *UI* subscribes to it (core/popup.ts) even though
+  // the reader never did — M2.0 found the popup dying on an undefined addListener. It then shipped
+  // broken a second way: the listener collection is a Set, and `.length` on a Set is undefined, so
+  // every guard read false and the event never fired. Hence these tests.
+  it('announces a set to storage.onChanged listeners with old and new values', async () => {
+    run('window.__changes = []');
+    run(
+      'window.__clipper.browser.storage.local.onChanged.addListener(function (c) { window.__changes.push(JSON.stringify(c)); })',
+    );
+    await run<Promise<void>>('window.__clipper.browser.storage.local.set({ watched: "first" })');
+    await run<Promise<void>>('window.__clipper.browser.storage.local.set({ watched: "second" })');
+    expect(run<string>('window.__changes.join("|")')).toBe(
+      '{"watched":{"newValue":"first"}}|{"watched":{"oldValue":"first","newValue":"second"}}',
+    );
+  });
+
+  it('announces a remove, and stays silent when nothing is listening', async () => {
+    run('window.__removals = []');
+    run('window.__syncWatcher = function (c) { window.__removals.push(JSON.stringify(c)); }');
+    run('window.__clipper.browser.storage.sync.onChanged.addListener(window.__syncWatcher)');
+    await run<Promise<void>>('window.__clipper.browser.storage.sync.set({ doomed: 7 })');
+    await run<Promise<void>>('window.__clipper.browser.storage.sync.remove("doomed")');
+    expect(run<string>('window.__removals.at(-1)')).toBe('{"doomed":{"oldValue":7}}');
+
+    // With the listener detached, a write must not read the old value back over the bridge: the
+    // event costs a round trip per key, so it is only paid when someone is actually listening.
+    run('window.__clipper.browser.storage.sync.onChanged.removeListener(window.__syncWatcher)');
+    calls.length = 0;
+    await run<Promise<void>>('window.__clipper.browser.storage.sync.set({ unwatched: 1 })');
+    expect(calls.map((c) => c.method)).toEqual(['setItem']);
+  });
 });

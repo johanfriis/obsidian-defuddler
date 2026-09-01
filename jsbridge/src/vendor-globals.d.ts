@@ -9,3 +9,7 @@ declare module 'webextension-polyfill' {
   const browser: any;
   export = browser;
 }
+
+// Replaced at build time by esbuild's `define` (true for the local debug build, false for the
+// committed prod artifact — D28). Upstream declares it in its own build; our code reads it too.
+declare const DEBUG_MODE: boolean;

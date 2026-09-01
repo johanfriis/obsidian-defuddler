@@ -128,7 +128,7 @@ function storageArea(area: 'local' | 'sync' | 'session') {
   const onChanged = eventSource();
 
   const announce = (changes: Record<string, { oldValue?: unknown; newValue?: unknown }>) => {
-    if (onChanged.listeners.length === 0) return;
+    if (onChanged.listeners.size === 0) return;
     for (const listener of onChanged.listeners) listener(changes, area, () => {});
   };
 
@@ -139,7 +139,7 @@ function storageArea(area: 'local' | 'sync' | 'session') {
       const changes: Record<string, { oldValue?: unknown; newValue?: unknown }> = {};
       for (const [k, v] of Object.entries(items)) {
         // Only read the old value when someone is listening: every read is a bridge round trip.
-        if (onChanged.listeners.length > 0) changes[k] = { oldValue: getOne(k), newValue: v };
+        if (onChanged.listeners.size > 0) changes[k] = { oldValue: getOne(k), newValue: v };
         if (backing) backing.bridge.setItem(backing.token, area, k, JSON.stringify(v));
         else store.set(k, v);
       }
@@ -148,7 +148,7 @@ function storageArea(area: 'local' | 'sync' | 'session') {
     remove: async (keys: string | string[]) => {
       const changes: Record<string, { oldValue?: unknown; newValue?: unknown }> = {};
       for (const k of Array.isArray(keys) ? keys : [keys]) {
-        if (onChanged.listeners.length > 0) changes[k] = { oldValue: getOne(k) };
+        if (onChanged.listeners.size > 0) changes[k] = { oldValue: getOne(k) };
         if (backing) backing.bridge.removeItem(backing.token, area, k);
         else store.delete(k);
       }
@@ -156,7 +156,7 @@ function storageArea(area: 'local' | 'sync' | 'session') {
     },
     clear: async () => {
       const changes: Record<string, { oldValue?: unknown; newValue?: unknown }> = {};
-      if (onChanged.listeners.length > 0) {
+      if (onChanged.listeners.size > 0) {
         for (const k of allKeys()) changes[k] = { oldValue: getOne(k) };
       }
       if (backing) backing.bridge.clear(backing.token, area);

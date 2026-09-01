@@ -891,13 +891,36 @@ The Kotlin here is plumbing; the clipper is upstream's.
 
 ### Tasks
 
-- **M2.1 — UI WebView on our own origin.** A second WebView served by `WebViewAssetLoader` from app
-  assets, hosting upstream's `popup.html` / `side-panel.html`. This is the `chrome-extension://`
-  analogue: our origin, our CSP, so nothing a page sends can refuse our stylesheets or scripts.
-  `build.mjs` grows entries for the UI pages beside the existing page bundle (upstream's own
-  `webpack.config.js` already declares them, so the entry list is a transcription). Add `androidx.webkit`
-  — not currently a dependency — for `WebViewAssetLoader`.
-- **M2.2 — Background responder + message routing.** Our own small module answering the ~15 actions the
+- **M2.1 — UI WebView on our own origin. DONE (2026-09-01), verified on the Find N6.** Upstream's
+  `popup.html` renders in a `ModalBottomSheet` over the page, served from
+  `https://appassets.androidplatform.net/ui/` by `WebViewAssetLoader`, reached by the shell bar's
+  third button (D25). `build.mjs` now emits `assets/ui/` (popup, side-panel, settings + `style.css`)
+  beside the page bundle; `androidx.webkit` 1.15.0 added.
+  - **Mount at `/`, not `/ui/`.** `AssetsPathHandler` appends whatever follows the registered prefix
+    to `assets/`, so mounting at `/ui/` strips the very segment the files live under and every page
+    404s. Recorded because the symptom is a blank sheet with nothing in the log.
+  - **The page URL travels as a `?readerUrl=` query parameter**, not an `evaluateJavascript` after
+    load: upstream's popup asks for tab info from its own `DOMContentLoaded` handler and wins that
+    race. It is upstream's own convention (`toggleReaderPageIframe` passes it identically), so
+    `core/popup.ts` already reads it.
+  - **Two defects this milestone found and fixed.** `storage.onChanged` shipped from M2.0 broken a
+    second way — the listener collection is a `Set`, and `.length` on a `Set` is `undefined`, so every
+    guard read false and the event never fired. Now `.size`, with tests (54 total). And `tsc` began
+    checking the vendored tree once D31 put upstream's UI in our entry graph; `npm run typecheck`
+    goes through `typecheck.mjs`, which reports our diagnostics and counts upstream's — `exclude`
+    cannot do this, since tsc checks anything reachable by import.
+  - **`npm run verify` now diffs the whole `assets/` tree**, not just `clipper-bundle.js` — D28's
+    "whatever is committed is what ships" covers `ui/` too.
+  - **Left failing on purpose:** the sheet shows *"Web Clipper was not able to start"*, because
+    `sendMessageToTab` has nowhere to go until M2.2 routes it and no `AndroidBridge` is attached to
+    this WebView yet (so its storage is in-memory). Logcat confirms the shape — the responder logs
+    `[bg] UNHANDLED action: getHighlighterMode`, then extraction fails. **That is M2.2, not a defect
+    here.**
+- **M2.2 — Background responder + message routing.** *Partly landed at M2.1:* `src/background.ts`
+  exists and answers `getActiveTab`/`getTabInfo` locally, acknowledges the fire-and-forget actions,
+  and names the set only Kotlin can service. **What remains is the Kotlin half** — attach a bridge to
+  the UI WebView and route `sendMessageToTab` across to the page WebView, which is the hop M2.0 faked
+  with a same-origin iframe. Our own small module answering the ~15 actions the
   clip and settings paths send (`getActiveTab`, `getTabInfo`, `sendMessageToTab`, `openObsidianUrl`,
   `openOptionsPage`, `fetchProxy`, the fire-and-forget notifications). **Upstream's `background.ts` is
   not ported — D31.** `browser.tabs` is backed by the single page WebView. Kotlin routes

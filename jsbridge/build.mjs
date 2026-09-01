@@ -1,13 +1,24 @@
-// Builds android/app/src/main/assets/clipper-bundle.js from the vendored obsidian-clipper
-// (git submodule, pinned — see playbook "Pinned upstream") plus our shim.
+// Builds the two JS artifacts the app ships, both from the vendored obsidian-clipper
+// (git submodule, pinned — see playbook "Pinned upstream") plus our shim:
+//
+//   assets/clipper-bundle.js   injected into the PAGE WebView — Layer B, the reader
+//   assets/ui/*                served to the UI WebView from our own origin — upstream's
+//                              extension pages, verbatim (playbook D31)
+//
+// The second exists because we host upstream's clipper rather than reimplementing it. Its pages
+// are ordinary files on an https origin WebViewAssetLoader owns, so unlike the page bundle they
+// are subject to no site's CSP: runtime.getURL is a plain relative URL there and CSS is a real
+// <link> (D20 is narrowed to the page WebView).
 //
 // Cross-platform by construction (D6): esbuild + sass through their Node APIs, no shell.
 //   node build.mjs --prod     the committed artifact — minified, DEBUG_MODE off (D28)
 //   node build.mjs            local Layer B build — unminified, DEBUG_MODE on, readable in
 //                             chrome://inspect. Never commit this; `npm run verify` will say so.
 //   --sourcemap               adds inline sourcemaps to a local build (~3x the size)
-//   --outfile <path>          write somewhere other than the committed asset (the tests do this,
-//                             so running them can never dirty the artifact)
+//   --outfile <path>          write the page bundle somewhere other than the committed asset
+//                             (the tests do this, so running them can never dirty the artifact).
+//                             Implies --no-ui: a test run must not touch assets/ui/ either.
+//   --no-ui                   skip the UI pages; page bundle only
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -25,6 +36,10 @@ const outfile =
     : resolve(process.argv[outfileFlag + 1]);
 
 const prod = process.argv.includes('--prod');
+// The UI pages live beside the bundle in one assets tree, so D28's rule covers them too: whatever
+// is committed is what a release APK ships.
+const uiOutdir = join(root, '../android/app/src/main/assets/ui');
+const buildUi = !process.argv.includes('--no-ui') && outfileFlag === -1;
 // Inline sourcemaps map back to individual .ts files but add ~4.7 MB, and the bundle is injected
 // into every page. An unminified build is readable enough in chrome://inspect on its own, so this
 // is opt-in: node build.mjs --sourcemap
@@ -148,3 +163,68 @@ console.log(
 );
 
 writeFileSync(join(root, 'build-meta.json'), JSON.stringify(result.metafile));
+
+// --- UI pages (D31) --------------------------------------------------------
+// Upstream's own webpack.config.js declares these entries and copies these HTML files; this is the
+// same list, built with our alias instead of theirs. Nothing here is patched — the only edit to the
+// HTML is dropping the extension's browser-polyfill <script>, which our shim replaces at bundle time.
+
+/** The upstream pages we host, and the entry that drives each. */
+const UI_PAGES = {
+  'popup.html': 'popup',
+  'side-panel.html': 'popup',
+  'settings.html': 'settings',
+};
+
+async function buildUiPages() {
+  mkdirSync(uiOutdir, { recursive: true });
+
+  // Upstream compiles style.scss to the style.css every page links. On our origin it is a real
+  // file, so unlike reader.css it needs no embedding and no blob URL.
+  writeFileSync(join(uiOutdir, 'style.css'), compileScss('style'));
+
+  const ui = await esbuild.build({
+    entryPoints: {
+      popup: join(root, 'src/ui-popup-entry.ts'),
+      settings: join(root, 'src/ui-settings-entry.ts'),
+    },
+    outdir: uiOutdir,
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    target: 'chrome120',
+    minify: prod,
+    sourcemap: sourcemap && !prod ? 'inline' : false,
+    alias: {
+      'webextension-polyfill': join(root, 'shim/browser.ts'),
+      'highlight.js': HLJS,
+    },
+    define: {
+      DEBUG_MODE: String(!prod),
+      'process.env.NODE_ENV': JSON.stringify(prod ? 'production' : 'development'),
+    },
+    plugins: [trimLocalesPlugin(), virtualAssetsPlugin(assets, messages)],
+    logLevel: 'info',
+    metafile: true,
+  });
+
+  for (const [page, entry] of Object.entries(UI_PAGES)) {
+    let html = readFileSync(join(upstreamSrc, page), 'utf8');
+    // Our shim is bundled into the page script; upstream's polyfill file does not exist here.
+    html = html.replace(/[\t ]*<script src="browser-polyfill\.min\.js"><\/script>\r?\n?/, '');
+    // side-panel.html already points at popup.js; settings.html at settings.js. Assert rather than
+    // rewrite, so an upstream rename surfaces here instead of as a blank page on the device.
+    if (!html.includes(`src="${entry}.js"`)) {
+      throw new Error(`${page} no longer loads ${entry}.js — upstream renamed an entry (playbook §14)`);
+    }
+    writeFileSync(join(uiOutdir, page), html);
+  }
+
+  const sizes = Object.keys(ui.metafile.outputs)
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => `${f.split('/').pop()} ${(ui.metafile.outputs[f].bytes / 1024).toFixed(0)} KB`)
+    .join(', ');
+  console.log(`ui/  ${sizes}  (${Object.keys(UI_PAGES).length} pages + style.css)`);
+}
+
+if (buildUi) await buildUiPages();
