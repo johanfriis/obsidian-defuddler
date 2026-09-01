@@ -40,14 +40,27 @@ Bumping either pin follows the procedure in §14 — never casually.
 - A fresh implementation session should read §1 (decisions), §2 (gate outcomes), §3 (upstream ground
   truth), and the milestone it is executing. Architecture & Rationale is background reading; Problem &
   UI Reference is where every "screenshot N" reference resolves.
-- **Where things stand (2026-09-01): M0 is complete, GATE G0 is closed, and M1 is in progress.** Phase 0 done;
-  Spikes A and B both pass on the Find N6; both G0 trade-offs signed off (D20 inline CSS, D21 Trusted
-  Types); B4 folded into M1.7 per D22. §2's findings correct several earlier assumptions, including
-  one carried since the original brief (now Problem & UI Reference) — read them before M1, especially
-  the M1.6 settle-time finding, which invalidates the "short delay" that task currently specifies.
-  **M1 (§7) is the work in flight**; D25 and D26 were taken on 2026-09-01 and amend M1.2/M1.6, so read
-  them before touching either. Read §5's status block first for the `just`-based dev loop, which
-  post-dates the original text of this playbook.
+- **Where things stand (2026-09-01): M0 and M1 are built; GATE G1 is open and is the next thing that
+  happens.** Phase 0 done, G0 closed and passed. Every M1 task (M1.0–M1.8) is implemented and
+  verified on the Find N6 — share → page → tap Reader → Reload, the Kotlin bridge, the trademark
+  sweep, the extraction harness, the foldable pass.
+
+  **Before writing any M2 code, read D25–D29 in §1.** They were all taken on 2026-09-01 and several
+  reverse earlier text: D26 (re-extract is not buildable; Reload is the recovery) supersedes what
+  M1.6 used to specify, and D29 (no algorithmic darkening) reverses a fix recorded under M1.8 earlier
+  the same day. §2's G0 findings still correct several older assumptions.
+
+  **G1 is not a formality to skip.** Three items on M1's acceptance list are honestly unticked — the
+  three apps' own share sheets, the YouTube transcript on device since B3, and cookie persistence
+  against a real login. Read §7's acceptance list; it marks what was observed and what was not.
+
+  Two constraints M2 inherits, both earned rather than assumed: **an inbound JS message is never
+  authorisation to save** (D27), and **the bookmark fallback must trigger on empty *text*, not an
+  empty content string** (M1.7's Instagram fixture). M2.3's `overwrite` question is still open and
+  needs Johan before that task is written.
+
+  Read §5's status block for the `just`-based dev loop, which post-dates this playbook's original
+  text.
 - Expected effort: one milestone ≈ one to a few focused sessions. M0 is timeboxed to ~1 day.
 
 ## 1. Decisions log
@@ -93,7 +106,7 @@ everything else was decided by Johan explicitly.
 | D18 | `SafWriter` (M2.4) and SAF hardening (M6.3) deferred, not deleted | Follows from D2: with no SAF save path there is nothing to write or harden. **The original justification (SAF bypasses Obsidian's triggers) turned out not to separate the two options — A5 showed `obsidian://` bypasses them too.** What the deferral now rests on is cost: `SafWriter` reimplements append/overwrite that Obsidian gives us free, plus tree-URI permission plumbing to build and harden. Two accepted trades: (1) `obsidian://` always foregrounds Obsidian (A4) — SAF would have allowed a true background save; (2) the URI contract is now a single point of failure — acceptable because notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss. |
 | D19 | Bundle English UI strings only (`LOCALES = ['en']`) and highlight.js's ~40-language `lib/common` rather than the full ~190 | Johan's call, 2026-08-31, confirming the B1 trims. Both degrade gracefully — `getMessage` falls back to English, `highlightElement` leaves an unregistered language unstyled — and both are one-line reverts in `jsbridge/build.mjs`. |
 | D20 | Reader CSS is delivered as an inline `<style>` by default, not upstream's blob-URL `<link>` — for `reader.css` and `highlighter.css` alike | Johan's call, 2026-08-31 at G0. Measured: the blob path is refused by any page with a `style-src` that omits `blob:` (github.com), leaving the reader stripped and unstyled. Inlining costs nothing on pages without CSP, and detecting a refusal in order to fall back is harder than always inlining. Implemented without patching upstream — see `installStyle` in `jsbridge/src/bundle-entry.ts`. |
-| D24 | **Reader mode is user-triggered, not automatic.** The shared page loads and renders normally; the app shell shows a "Reader" toggle. Recourse if extraction is incomplete: wait and re-extract | Johan's call, 2026-09-01, resolving the M1.6 problem B3 opened. **Rests on the governing principle above**: the toggle keeps Johan in the decision loop instead of the machine mandating a transform that may land him in a broken state. Secondary benefits: a badly extracting page leaves him looking at the real page he can decline to toggle, and an on-page login form becomes usable for free (what remains of M6.1 after D23). **The settle-timing argument does *not* hold and is not what this rests on** — see M1.6. |
+| D24 | **Reader mode is user-triggered, not automatic.** The shared page loads and renders normally; the app shell shows a "Reader" toggle. ~~Recourse if extraction is incomplete: wait and re-extract~~ — **superseded by D26: the recourse is Reload → wait → tap Reader again**, because re-extract turned out not to be buildable | Johan's call, 2026-09-01, resolving the M1.6 problem B3 opened. **Rests on the governing principle above**: the toggle keeps Johan in the decision loop instead of the machine mandating a transform that may land him in a broken state. Secondary benefits: a badly extracting page leaves him looking at the real page he can decline to toggle, and an on-page login form becomes usable for free (what remains of M6.1 after D23). **The settle-timing argument does *not* hold and is not what this rests on** — see M1.6. |
 | D25 | **Shell chrome is one slim bottom bar: `Reader`, `Reload`, and `Clip` from M2** | Johan's call, 2026-09-01. D24 requires a surface to host the reader toggle and D23 forbids a browser UI, but §16's inventory owned neither — the bar closes that gap. `Reload` is a full page reload, available in both states, added at Johan's request. It is deliberately *not* back/forward/URL/tabs, so D23 holds. After a reload the raw page is showing with the reader off, since D24 forbids auto-toggling. |
 | D26 | **No re-extract action; Reload is the recovery for a too-early reader tap** | Johan's call, 2026-09-01, on evidence that M1.6's re-extract is not buildable. `Reader.apply` ends its cleanup with `doc.body.textContent = ''` and stores no copy of the original (`utils/reader.ts` ~L2130); `cleanupScripts` (~L1376) clears every page timer; `restore` (~L2383) recovers the page only by `window.location.reload()`. So once the reader is on, the page's DOM *and* its running scripts are gone: a late-hydrating YouTube transcript can never arrive, and a re-extract would re-parse the reader's own output. The recovery is Reload → wait → tap Reader, which toggling the reader off already does internally. The architecture where re-extract genuinely works — render into a separate document via `Reader.preExtractedContent` / `reader-view.ts` / `toggleReaderPageIframe`, leaving the original page alive and hydrating underneath — is a Layer B rework, **not carried to G1 as an agenda item**; revisit only if reading real articles shows extraction timing is a recurring problem. |
 | D27 | **`AndroidBridge` is gated on a per-activity token, handed to the bundle as a closure parameter** *(default)* | `addJavascriptInterface` attaches the bridge to the main world of every page the WebView loads, so a hostile page's script can call it exactly as our bundle does. minSdk 31 means only `@JavascriptInterface` methods are reachable (no reflection), so the exposure is bounded to what we write — but what we write grows a save-to-vault path in M2. The token is passed as a closure parameter by the injection wrapper and never assigned to `window`, which page script could read. **Residual, recorded rather than papered over: anything on `window.__clipper` is reachable by the page, including our storage and `sendMessage`. M2 must never treat an inbound message as authorisation to save** — the save is initiated by a tap on the Kotlin side. |
@@ -267,7 +280,9 @@ ellipsizes.
   delay for SPA hydration)". On YouTube the needed settle is somewhere between 6 and 15 seconds — far
   beyond any delay worth blocking the reader on. So the fixed delay cannot be the mechanism that makes
   YouTube work: either the re-extract action carries it (and needs to be prominent, not a hidden
-  fallback), or extraction waits on a readiness signal rather than a timer. **Design input for M1.6,
+  fallback), or extraction waits on a readiness signal rather than a timer. *(Both options died:
+  re-extract is not buildable — D26 — and the recourse is Reload. Left as written because it is what
+  was concluded at the time.)* **Design input for M1.6,
   not a bug.**
 - **The interactive transcript layer never wires**, separately from the content. `reader-transcript.ts`
   builds a pinned player, auto-scroll and clickable segments, all of which need a
@@ -278,8 +293,8 @@ ellipsizes.
   the content; the interactive layer is a nice-to-have — flag for M5 if it is ever wanted.**
 - **SPA reloads fire `onPageFinished` repeatedly** — github fired it four times for one navigation.
   The bundle's `obsidianReaderInitialized` guard held every time (each re-injection returned
-  `"object"` and did not replace the surface). M1.6's re-extract action still needs to exist, but
-  re-injection itself is safe.
+  `"object"` and did not replace the surface). ~~M1.6's re-extract action still needs to exist~~
+  (**D26: it does not, and cannot** — Reload carries the case), but re-injection itself is safe.
 
 **Both G0 trade-offs settled by Johan, 2026-08-31 — G0 is closed:**
 
@@ -340,7 +355,7 @@ Share sheet (text/plain URL)
       → load URL → inject clipper-bundle.js     [M1]
       → Reader.toggle(document)                 [M1 — screenshot 1]
       → highlighter                             [M4]
-      → reader style settings                   [M5 — screenshot 2]
+      → reader style settings                   [upstream's Aa panel — done at M1.3, §12]
   → "Clip" → JS bridge → clip({...})            [M2]
   → Compose clip sheet                          [M2/M3 — screenshot 3]
   → SavePipeline: clipboard → obsidian://new → content= → report failure   [M2]
@@ -365,24 +380,37 @@ extension never needs them (§2, and Architecture & Rationale's *What we are not
   enforcing Trusted Types kill extraction outright (D21).
 
 ```text
+Marked (planned) where the file does not exist yet — everything else is on disk as of 2026-09-01.
+
 android/                              Gradle project (Kotlin, Compose, minSdk 31, targetSdk 36)
   app/src/main/
-    java/…/share/ShareReceiverActivity.kt
-    java/…/reader/ReaderActivity.kt, ClipperBridge.kt, ReaderWebViewClient.kt
-    java/…/clip/ClipSheet.kt, ClipResult.kt
-    java/…/save/SavePipeline.kt, ObsidianUri.kt      (SafWriter.kt deferred — D18)
-    java/…/settings/                  vault name, prefs, template store
-    assets/clipper-bundle.js          built artifact, committed
+    java/…/MainActivity.kt            launcher; a "share a link" screen that becomes M2.4's setup
+    java/…/share/ShareReceiverActivity.kt, SharedUrl.kt      (URL parsing is JVM-testable)
+    java/…/reader/ReaderActivity.kt, ReaderWebViewClient.kt
+    java/…/reader/AndroidBridge.kt    the @JavascriptInterface object (token-gated — D27)
+    java/…/reader/ClipperBundle.kt    the bundle asset + the JS snippets Kotlin drives it with
+    java/…/ui/ClipperTheme.kt         Compose day/night theme (M5.2)
+    java/…/clip/ClipSheet.kt, ClipResult.kt                  (planned — M2)
+    java/…/save/SavePipeline.kt, ObsidianUri.kt              (planned — M2; SafWriter deferred, D18)
+    java/…/settings/                  vault name, prefs, template store   (planned — M2.4/M3)
+    res/values/themes.xml, res/values-night/themes.xml       the day/night pair (D29 context)
+    assets/clipper-bundle.js          built artifact, committed — the PROD build (D28)
+  app/src/test/…/share/SharedUrlTest.kt                      JVM unit tests
 jsbridge/
   package.json, build.mjs             esbuild + sass via Node API (node build.mjs — cross-platform)
-  shim/browser.ts                     the webextension-polyfill replacement
+  vitest.config.ts                    serves `virtual:assets`, aliases the polyfill to our shim, and
+                                      pulls in upstream's two highlighter suites (M1.7)
+  shim/browser.ts                     the webextension-polyfill replacement; bridge-backed storage
   src/bundle-entry.ts                 bundle entry — exposes window.__clipper
   src/vendor-globals.d.ts             ambients the vendored tree expects (chrome, the polyfill module)
-  test/fixtures/*.html                saved pages + expected clip output
-  test/*.test.ts                      vitest + linkedom
+  test/global-setup.ts                builds the bundle once, --prod, to .tmp/ (never the asset)
+  test/extraction.test.ts             Defuddle over the fixtures, under jsdom
+  test/bundle.test.ts, bridge.test.ts, bootstrap.test.ts     linkedom + a VM sandbox
+  test/fixtures/*.html + README.md    captured pages, and what they cannot prove
   vendor/obsidian-clipper/            git submodule @ pin
 docs/plan/                            these documents
-LICENSE, THIRD_PARTY_LICENSES, .gitignore, .gitattributes
+LICENSE, .gitignore, .gitattributes
+THIRD_PARTY_LICENSES                  (planned — assembled at v1 release, §10/§17)
 ```
 
 ---
@@ -416,10 +444,14 @@ mise trust && mise install    # provisions JDK 25 + Node 22 (mise refuses untrus
 just setup                    # submodule, android/local.properties, npm deps
 just doctor                   # verifies toolchain, SDK, adb, submodule, deps, attached device
 just run                      # assembleDebug + installDebug + launch on the phone
+just share <url>              # fire a real ACTION_SEND at the app — the fastest M1/M2 loop
 just log                      # logcat filtered to this app's pid
-just jstest                   # jsbridge vitest suite
-just jsbuild                  # rebuild android/.../assets/clipper-bundle.js from the submodule
+just test                     # Android JVM unit tests
+just jstest                   # jsbridge vitest suite (ours + upstream's highlighter suites)
+just jsbuild                  # rebuild the committed bundle — minified, DEBUG_MODE off (D28)
+just jsbuild-debug            # local unminified build for chrome://inspect; never commit it
 just jsverify                 # prove the committed bundle matches its sources (§14)
+just jscheck                  # typecheck the jsbridge TypeScript
 just inspect                  # prints the chrome://inspect steps for WebView debugging (Layer B)
 ```
 
@@ -913,9 +945,17 @@ asset in the same commit — `npm run verify` is the honesty check.
 
 **Submodule bump procedure.** (1) Read upstream diff since the pin, especially `src/utils/reader*`,
 `highlighter*`, `api.ts`, `obsidian-note-creator.ts`, `build-api.mjs`; (2) bump the pinned commit;
-(3) `npm run build`; (4) `npm test` — fixture snapshots catch extraction drift, upstream's highlighter
-tests catch Layer B drift; (5) manual smoke: share → read → clip on device; (6) commit submodule ref +
-rebuilt bundle together, noting the new pin in §Pinned upstream.
+(3) `just jsbuild`; (4) `just jstest` — the fixture snapshots in `test/extraction.test.ts` catch
+extraction drift, and upstream's own `highlighter.test.ts` / `highlighter-overlays.test.ts` run in our
+harness against *our* shim, so they catch Layer B drift (M1.7); (5) manual smoke: share → read → clip
+on device — **this step is not optional**, because the fixtures are `curl` captures and cannot see
+anything a page's script builds (github's shadow DOM is absent from them entirely; see
+`test/fixtures/README.md`); (6) commit submodule ref + rebuilt bundle together, noting the new pin in
+§Pinned upstream.
+
+Two contracts a bump can break silently, both guarded by tests rather than by reading:
+`test/bridge.test.ts` is the executable spec for `AndroidBridge.kt`, and `bundle.test.ts` asserts the
+inline-CSS ids upstream guards on (D20) and the branding sweep's anchor (M1.5).
 
 **WebView debugging.** `setWebContentsDebuggingEnabled(true)` (debug builds) + `chrome://inspect` on
 the dev machine gives full DevTools against the phone — the primary tool for all Layer B work.
