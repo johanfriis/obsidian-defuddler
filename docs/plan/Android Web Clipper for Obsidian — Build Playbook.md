@@ -247,6 +247,10 @@ ellipsizes.
   cost extraction quality. Carried into M1.7's fixtures per D22.
 - **The YouTube transcript works — but extraction timing decides whether it is there.** Measured by
   varying the settle between page load and toggle, everything else identical:
+  *(Refined at M1.7, 2026-09-01: the transcript is present in the **server HTML** — Defuddle's
+  `YoutubeExtractor` parses it from inline player JSON, and a `curl` capture with no JavaScript
+  executed yields it in full. So the timing below is not the transcript data arriving late over the
+  network; it is a property of the live WebView that remains unidentified. The measurement stands.)*
 
   | settle | transcript |
   |---|---|
@@ -650,13 +654,49 @@ hand-written reader.
   still hydrating. A too-early tap is recovered with the shell bar's **Reload** → wait → tap
   **Reader** again. Toolbar buttons whose milestones haven't arrived (pen → M4, Aa → M5) are hidden or
   no-op with a "coming later" toast — decide which looks less broken when wiring.
-- **M1.7 — Fixture harness.** `jsbridge/test/`: save 4–5 fixture pages (news article, YouTube watch
-  page, GitHub README, stephango post, one known-hostile page), run extraction under vitest + linkedom,
-  snapshot the output. Also wire upstream's own `highlighter.test.ts` / `highlighter-overlays.test.ts`
-  to run against our bundle config — they guard M4 in advance.
-- **M1.8 — Foldable pass.** Reader on cover screen, on inner screen, and across a fold/unfold
-  mid-article (activity recreation must not lose the page or the reader state — re-toggling on recreate
-  is acceptable if it's not visually jarring).
+- **M1.7 — Fixture harness. DONE (2026-09-01).** `test/extraction.test.ts` runs Defuddle over five
+  captured pages and snapshots the result; `test/fixtures/README.md` records how each was captured
+  and what it cannot prove. 50 tests across 6 files.
+  - **jsdom, not linkedom.** Defuddle needs more DOM than linkedom provides, and upstream's own
+    DOM-dependent tests declare `@vitest-environment jsdom` for the same reason. linkedom stays where
+    it suffices — the bundle tests, which only evaluate and probe.
+  - **Upstream's `highlighter.test.ts` and `highlighter-overlays.test.ts` now run in our harness**,
+    aliased to *our* shim rather than upstream's mock, which required teaching `vitest.config.ts` to
+    serve `virtual:assets` (the shim imports it; `build.mjs` supplies it via an esbuild plugin, so
+    without this the shim cannot be imported outside a bundle at all). 14 upstream tests, guarding M4
+    before it is built and first to break if a bump reworks the highlighter.
+  - **Fixtures are `curl` captures with the app's UA, and that bounds them.** github's shadow DOM is
+    simply not in the bytes — 0 `attachShadow`, 0 declarative `<template shadowroot>` — because the
+    live page attaches its roots from script. **B3's shadow-DOM finding cannot be reproduced by any
+    `curl` fixture** and stays a device-only check.
+  - **Correction to a B3 reading: the YouTube transcript is in the server HTML.** Defuddle's
+    `YoutubeExtractor` parses it out of the inline player JSON, not the rendered page, so a capture
+    with no JavaScript executed yields title, author, embed *and* the full transcript — the fixture
+    guards the transcript path properly. What this does **not** overturn is B3's measurement (absent
+    at a 6 s settle, present at 15 s): both are true, so whatever governs the timing is a property of
+    the live WebView, not of when the transcript data arrives. That mechanism is **not identified**,
+    and nothing here changes D26 — Reload remains the recovery.
+  - **Two flakes were found and fixed while building it**, both worth naming because a harness that
+    fails at random is worse than no harness. (1) Each suite rebuilt the bundle to the *same* scratch
+    path and vitest runs files in parallel, so a suite could read a half-written bundle — the build
+    moved to a `globalSetup` that runs once. (2) Defuddle takes ~4.3 s on the 864 KB apnews fixture
+    against vitest's 5 s default timeout, and a loaded machine tipped it over; `testTimeout` is now
+    30 s. Both surfaced as an intermittent whole-suite skip.
+  - **The hostile fixture is a real page, and its failure shape matters.** Instagram served to a
+    logged-out client gives Defuddle a title, `wordCount` 0, and ~22 KB of markup containing not one
+    readable character. **So M2.5's bookmark fallback must trigger on empty *text*, never on an empty
+    content string** — that check would not fire here.
+- **M1.8 — Foldable pass. NOT DONE — needs Johan and the phone in hand.** Reader on cover screen, on
+  inner screen, and across a fold/unfold mid-article. `ReaderActivity` declares `configChanges` for
+  `screenSize|screenLayout|smallestScreenSize|orientation|density|uiMode`, so the activity should not
+  be recreated at all and the WebView (with the rendered reader) should survive a fold — that is the
+  claim to falsify, not to assume.
+  - **Folding is physical, so this cannot be driven over adb.** Everything else in M1 was verified on
+    device; this is the one item that needs hands.
+  - **M5.2's theme check folds in here** (§12): the reader in dark mode, and whether Android's
+    algorithmic darkening interferes with colours the reader owns. Attempted on 2026-09-01 via
+    `adb shell cmd uimode night yes`; the device dozed and then locked mid-run, so **it was not
+    observed** and the setting was restored to `auto`. Unverified, not known broken.
 
 ### Acceptance
 

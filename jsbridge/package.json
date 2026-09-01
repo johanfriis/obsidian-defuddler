@@ -13,8 +13,10 @@
     "build:debug-sourcemap": "node build.mjs --sourcemap"
   },
   "devDependencies": {
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^26.4.0",
     "esbuild": "^0.28.2",
+    "jsdom": "^30.0.1",
     "linkedom": "^0.18.13",
     "sass": "^1.103.1",
     "typescript": "^7.0.2",

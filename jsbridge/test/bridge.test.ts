@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,8 +15,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
  */
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const committedBundle = join(root, '../android/app/src/main/assets/clipper-bundle.js');
-// Built to scratch, with --prod so the tests exercise exactly what ships (D28). Writing to the
-// committed asset instead would leave a debug bundle in the tree every time the suite ran.
+// Built once by test/global-setup.ts: --prod, so the suite exercises exactly what ships (D28), and
+// to scratch, so running tests can never leave a debug bundle in the tree.
 const bundlePath = join(root, '.tmp/clipper-bundle.js');
 const TOKEN = 'test-token-1234';
 
@@ -31,10 +30,6 @@ let calls: Call[];
 let prefs: Map<string, string>;
 
 beforeAll(() => {
-  execFileSync(process.execPath, ['build.mjs', '--prod', '--outfile', bundlePath], {
-    cwd: root,
-    stdio: 'pipe',
-  });
   const source = readFileSync(bundlePath, 'utf8');
 
   const { window, document } = parseHTML('<html><head></head><body><p>hi</p></body></html>');

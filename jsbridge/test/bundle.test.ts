@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,8 +9,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 // exposing window.__clipper. Reader.toggle itself needs a real browser — that is B3, on device.
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const committedBundle = join(root, '../android/app/src/main/assets/clipper-bundle.js');
-// Built to scratch, with --prod so the tests exercise exactly what ships (D28). Writing to the
-// committed asset instead would leave a debug bundle in the tree every time the suite ran.
+// Built once by test/global-setup.ts: --prod, so the suite exercises exactly what ships (D28), and
+// to scratch, so running tests can never leave a debug bundle in the tree.
 const bundlePath = join(root, '.tmp/clipper-bundle.js');
 
 let source: string;
@@ -19,10 +18,6 @@ let run: <T = unknown>(expression: string) => T;
 let reinject: () => void;
 
 beforeAll(() => {
-  execFileSync(process.execPath, ['build.mjs', '--prod', '--outfile', bundlePath], {
-    cwd: root,
-    stdio: 'pipe',
-  });
   source = readFileSync(bundlePath, 'utf8');
   ({ run, reinject } = createContext());
 }, 120_000);

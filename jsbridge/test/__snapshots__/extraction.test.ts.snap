@@ -1,0 +1,29 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`extraction fixtures > apnews — a real news article 1`] = `
+{
+  "chars": 3901,
+  "head": "<main> <p>Texting friends, replying to a business email, tapping out some text for a social media post. We do a lot of writing on our smartphones, which are inc",
+}
+`;
+
+exports[`extraction fixtures > github — a README, minus the shadow DOM the live page builds 1`] = `
+{
+  "chars": 6328,
+  "head": "<article><p dir="auto">Obsidian Web Clipper helps you highlight and capture the web in your favorite browser. Anything you save is stored as durable Markdown fi",
+}
+`;
+
+exports[`extraction fixtures > stephango — the friendly baseline 1`] = `
+{
+  "chars": 13584,
+  "head": "<article> <p>I use <a href="https://stephango.com/obsidian">Obsidian</a> to think, take notes, write essays, and publish this site. This is my bottom-up approac",
+}
+`;
+
+exports[`extraction fixtures > youtube — title, author, embed and the full transcript 1`] = `
+{
+  "chars": 2780,
+  "head": "<iframe width="560" height="315" src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; cl",
+}
+`;
