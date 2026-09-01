@@ -30,6 +30,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Icon
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -160,30 +163,6 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
     // Non-null while upstream's clip sheet is up. Holds the page identity captured at the moment
     // Clip was tapped, not a live read: the sheet is clipping the page as it was then.
     var clipping by remember { mutableStateOf<Pair<String, String>?>(null) }
-
-    // Carries messages between the two WebViews (M2.2). Held here rather than inside the sheet
-    // because it outlives the sheet: the page WebView is registered with it for the whole session,
-    // and the sheet only attaches and detaches the UI side.
-    val router = remember {
-        MessageRouter(
-            // Bridge calls land on the WebView's JavaBridge thread; everything downstream of here
-            // touches a WebView, which is main-thread only.
-            post = { block -> mainHandler.post(block) },
-            onOpenExternal = { uri -> openExternally(appContext, uri) },
-            // Reads the delegate on each call, so it sees whichever toggle is in flight now — not
-            // whatever was pending when the router was first remembered.
-            onPageEvent = { message -> onBridgeMessage(message, pendingApply) },
-        )
-    }
-
-    // A full reload of whatever the WebView currently shows. Also the recovery for a reader tapped
-    // before the page settled (D26): reload, wait, tap Reader again.
-    fun reload() {
-        val web = webView ?: return
-        readerActive = false
-        web.loadUrl(web.url ?: url)
-    }
-
     // Retry after a load error. The error pane replaced the WebView in composition and onRelease
     // destroyed it (after onRenderProcessGone the framework forbids reusing it anyway), so clearing
     // the error is what recreates one: the factory runs again and starts from the shared URL.
@@ -201,6 +180,24 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
     fun openClipSheet() {
         val web = webView ?: return
         clipping = (web.url ?: url) to (web.title.orEmpty())
+    }
+
+    // Carries messages between the two WebViews (M2.2). Held here rather than inside the sheet
+    // because it outlives the sheet: the page WebView is registered with it for the whole session,
+    // and the sheet only attaches and detaches the UI side.
+    val router = remember {
+        MessageRouter(
+            bridgeToken = bridgeToken,
+            // Bridge calls land on the WebView's JavaBridge thread; everything downstream of here
+            // touches a WebView, which is main-thread only.
+            post = { block -> mainHandler.post(block) },
+            onOpenExternal = { uri -> openExternally(appContext, uri) },
+            // The reader toolbar's clip button arrives here, from either WebView.
+            onOpenClipSheet = ::openClipSheet,
+            // Reads the delegate on each call, so it sees whichever toggle is in flight now — not
+            // whatever was pending when the router was first remembered.
+            onPageEvent = { message -> onBridgeMessage(message, pendingApply) },
+        )
     }
 
     fun toggleReader() {
@@ -243,18 +240,7 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
         }
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize().safeDrawingPadding(),
-        bottomBar = {
-            ShellBar(
-                readerActive = readerActive,
-                enabled = webView != null && loadError == null && !toggleInFlight,
-                onToggleReader = ::toggleReader,
-                onReload = ::reload,
-                onClip = ::openClipSheet,
-            )
-        },
-    ) { insets ->
+    Scaffold(modifier = Modifier.fillMaxSize().safeDrawingPadding()) { insets ->
         Box(Modifier.fillMaxSize().padding(insets)) {
             val error = loadError
             if (error != null) {
@@ -363,6 +349,15 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
                         modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
                     )
                 }
+                if (loadError == null) {
+                    ShellControls(
+                        readerActive = readerActive,
+                        enabled = webView != null && !toggleInFlight,
+                        onToggleReader = ::toggleReader,
+                        onClip = ::openClipSheet,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                    )
+                }
             }
         }
     }
@@ -387,43 +382,54 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
 }
 
 /**
- * The whole of the app's chrome (D25). Present in both states, because `Reload` is as useful on a
- * half-broken raw page as it is on a reader view.
+ * The whole of the app's chrome (D25, reshaped by D33): two small buttons, bottom right.
+ *
+ * `Reader` and `Clip` are here and nothing else. **`Reload` was retired**, not moved: toggling the
+ * reader off already ends in `window.location.reload()`, so D26's recovery for a too-early reader
+ * tap is "toggle off, wait, toggle on" — and a page that fails to load outright still gets the
+ * error pane's Retry. That left a permanent button for "the raw page rendered wrong", which is rare
+ * enough not to earn one.
+ *
+ * Both actions stay one tap because both are frequent: every shared link is read, and many are
+ * clipped. Folding `Reader` into the clip sheet would have made the *more* common action two taps
+ * behind the less common one. Once the reader is on, upstream's own toolbar carries a clip button
+ * too (its `toggleIframe` is routed to the sheet), so `Clip` here is really for clipping a page
+ * you chose not to read.
  */
 @Composable
-private fun ShellBar(
+private fun ShellControls(
     readerActive: Boolean,
     enabled: Boolean,
     onToggleReader: () -> Unit,
-    onReload: () -> Unit,
     onClip: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Column {
-        HorizontalDivider()
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Filled while the reader owns the page, so the bar says which of the two views is on
-            // screen without needing a label that changes meaning.
-            if (readerActive) {
-                FilledTonalButton(onClick = onToggleReader, enabled = enabled) {
-                    Text(stringResource(R.string.action_reader))
-                }
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        SmallFloatingActionButton(
+            onClick = { if (enabled) onToggleReader() },
+            containerColor = if (readerActive) {
+                MaterialTheme.colorScheme.primary
             } else {
-                TextButton(onClick = onToggleReader, enabled = enabled) {
-                    Text(stringResource(R.string.action_reader))
-                }
-            }
-            TextButton(onClick = onReload, enabled = enabled) {
-                Text(stringResource(R.string.action_reload))
-            }
-            // The third and last button D25 allows. Available with the reader on or off: upstream's
-            // sheet clips whatever the page currently is, and both states are legitimate to clip.
-            TextButton(onClick = onClip, enabled = enabled) {
-                Text(stringResource(R.string.action_clip))
-            }
+                MaterialTheme.colorScheme.surfaceVariant
+            },
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_reader),
+                contentDescription = stringResource(R.string.action_reader),
+            )
+        }
+        SmallFloatingActionButton(
+            onClick = { if (enabled) onClip() },
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_clip),
+                contentDescription = stringResource(R.string.action_clip),
+            )
         }
     }
 }

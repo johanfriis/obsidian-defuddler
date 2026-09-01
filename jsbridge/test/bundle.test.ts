@@ -182,15 +182,17 @@ describe('clipper-bundle', () => {
       '<button aria-label="Reader settings"></button>' +
       '<button aria-label="Add to Obsidian"></button>' +
       '</div>'`);
-    // The pen (M4) and both Add-to-Obsidian buttons (M2) — not the TOC, not Aa.
-    expect(run('window.__clipper.hideUnbuiltControls(document)')).toBe(3);
-    expect(run('document.querySelectorAll("[data-clipper-unbuilt]").length')).toBe(3);
-    expect(
-      run('document.querySelector(\'[aria-label="Reader settings"]\').hasAttribute("data-clipper-unbuilt")'),
-    ).toBe(false);
-    expect(
-      run('document.querySelector(\'[aria-label="Contents"]\').hasAttribute("data-clipper-unbuilt")'),
-    ).toBe(false);
+    // Only the pen now (M4). Add-to-Obsidian left this list at M2.6: its `toggleIframe` is routed
+    // to our clip sheet, so it is the one-tap clip from inside the reader — and the reason there is
+    // no shell bar (D33). Not the TOC, not Aa.
+    expect(run('window.__clipper.hideUnbuiltControls(document)')).toBe(1);
+    expect(run('document.querySelectorAll("[data-clipper-unbuilt]").length')).toBe(1);
+    for (const label of ['Reader settings', 'Contents', 'Add to Obsidian']) {
+      expect(
+        run(`document.querySelector('[aria-label="${label}"]').hasAttribute("data-clipper-unbuilt")`),
+        `${label} should stay visible`,
+      ).toBe(false);
+    }
   });
 
   it('ships the CSS that acts on those marks', () => {

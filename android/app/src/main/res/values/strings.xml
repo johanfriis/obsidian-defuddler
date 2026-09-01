@@ -6,11 +6,12 @@
 
     <string name="share_no_url">No link found in what was shared.</string>
 
-    <!-- Shell bar (D25). -->
+    <!-- Shell controls: two mini FABs (D25, reshaped by D33). Reload retired — toggling the
+         reader off already reloads, which is D26's recovery. -->
     <string name="action_reader">Reader</string>
-    <string name="action_reload">Reload</string>
     <string name="action_retry">Retry</string>
     <string name="action_clip">Clip</string>
+    <string name="action_settings">Settings and templates</string>
 
     <!-- The save path leaves through an intent, so both failures are Obsidian-side (D2). -->
     <string name="no_obsidian">Obsidian isn\'t installed, so there\'s nowhere to save this.</string>

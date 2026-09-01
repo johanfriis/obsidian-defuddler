@@ -22,8 +22,10 @@ import org.json.JSONObject
  * WebView.
  */
 class MessageRouter(
+    private val bridgeToken: String,
     private val post: (() -> Unit) -> Unit,
     private val onOpenExternal: (Uri) -> Boolean,
+    private val onOpenClipSheet: () -> Unit,
     private val onPageEvent: (JSONObject) -> Unit,
 ) {
 
@@ -64,8 +66,17 @@ class MessageRouter(
                 replyToUi(id, JSONObject().put("success", opened).toString())
             }
 
+            // The reader toolbar's Obsidian button (reader.ts ~L252). Upstream means "show the
+            // clipper as an in-page iframe"; we open the bottom sheet instead. Redirected rather
+            // than removed, because it is the one-tap clip from inside the reader — and therefore
+            // the reason the shell bar could go (D33).
+            "toggleIframe" -> {
+                onOpenClipSheet()
+                replyToUi(id, JSONObject().put("success", true).toString())
+            }
+
             "openSettings", "openOptionsPage" -> {
-                uiWebView?.loadUrl(ClipperUi.settingsUrl())
+                uiWebView?.loadUrl(ClipperUi.settingsUrl(bridgeToken))
                 replyToUi(id, JSONObject().put("success", true).toString())
             }
 
@@ -100,11 +111,16 @@ class MessageRouter(
                 }
             }
 
-            // The page talking outward: `clipperReaderApplied`, `updateHasHighlights` and friends.
-            // These are the messages M1 handled, now inside an envelope.
+            // The page talking outward: `clipperReaderApplied`, `updateHasHighlights`, and the
+            // reader toolbar's `toggleIframe`. These are the messages M1 handled, now enveloped.
             "request" -> {
                 val id = envelope.optInt("id", -1)
-                envelope.optJSONObject("message")?.let(onPageEvent)
+                val message = envelope.optJSONObject("message")
+                if (message?.optString("action") == "toggleIframe") {
+                    onOpenClipSheet()
+                } else {
+                    message?.let(onPageEvent)
+                }
                 replyToUi(id, null, target = pageWebView)
             }
 

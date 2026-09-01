@@ -11,20 +11,28 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import it.slowmail.obsidianreader.clipper.SettingsActivity
 import it.slowmail.obsidianreader.ui.ClipperTheme
 
 /**
  * The launcher screen — and deliberately almost nothing (playbook M1.0).
  *
- * The app is driven from the share sheet (M1.1), so tapping the icon has nothing to open. This
- * says so, and is what `just run` lands on. It grows into M2.4's setup screen: vault name, default
- * folder, silent-open toggle.
+ * The app is driven from the share sheet (M1.1), so tapping the icon has nothing to open. This says
+ * so, and is what `just run` lands on.
+ *
+ * It also carries the one other thing that needs a home: a way into settings that does not require
+ * a page to be open. **There is no setup screen** — M2.4 was deleted (D33). Upstream's own settings
+ * hold the vault list, and `saveToObsidian` omits `&vault=` entirely when none is set, so Obsidian
+ * saves to whichever vault is open. For a one-vault user that is more reliable than typing a name
+ * that has to match exactly.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,6 +56,10 @@ private fun HomeScreen() {
     ) {
         Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge)
         Text(stringResource(R.string.home_hint), style = MaterialTheme.typography.bodyMedium)
+        val context = LocalContext.current
+        TextButton(onClick = { context.startActivity(SettingsActivity.intent(context)) }) {
+            Text(stringResource(R.string.action_settings))
+        }
     }
 }
 

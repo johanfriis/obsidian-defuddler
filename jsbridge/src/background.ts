@@ -72,6 +72,10 @@ const ACKNOWLEDGED = new Set([
  */
 const FOR_KOTLIN = new Set([
   'sendMessageToTab',
+  // The reader toolbar's Obsidian button. Upstream means "open the clipper as an in-page iframe";
+  // Kotlin opens our bottom sheet instead. Redirected rather than removed (M2.6) — it is the
+  // one-tap clip from inside the reader, and it is why there is no shell bar (D33).
+  'toggleIframe',
   // Content-script questions the extension's background would forward to the tab. The router
   // does the forwarding; listing them here is documentation, since falling through is the default.
   'getHighlighterMode',
@@ -92,6 +96,23 @@ const FOR_KOTLIN = new Set([
 /** Actions seen at least once, for the log line the §14 bump smoke pass watches. */
 const seen = new Set<string>();
 
+/**
+ * Controls upstream ships that this app cannot honour, hidden rather than left to fail (M2.6).
+ *
+ * Only one: `embedded-mode` toggles the popup between an extension popup and an in-page iframe, and
+ * there is exactly one context here, so it has nothing to switch to. Everything else stays —
+ * including the interpreter, which is `display:none` until it is given an API key and so costs
+ * nothing to carry, and the reader toggle, which is now the *only* reader toggle (D33).
+ */
+const UNSUPPORTED_CONTROLS = ['embedded-mode'];
+
+function hideUnsupportedControls(): void {
+  for (const id of UNSUPPORTED_CONTROLS) {
+    const el = document.getElementById(id);
+    if (el) (el as HTMLElement).style.display = 'none';
+  }
+}
+
 export function installBackground(): void {
   // Kotlin's way in, under the same name the page WebView uses, so the router has one call site for
   // both documents. Without it a reply from Kotlin lands on nothing and every request this document
@@ -99,6 +120,11 @@ export function installBackground(): void {
   (window as unknown as { __clipper: { receive: (json: string) => void } }).__clipper = {
     receive: receiveFromNative,
   };
+
+  // Upstream's popup builds its header before this runs in some paths and after in others, so do
+  // it on both edges rather than guessing which.
+  hideUnsupportedControls();
+  document.addEventListener('DOMContentLoaded', hideUnsupportedControls);
 
   registerBackground((raw: unknown) => {
     const message = (raw ?? {}) as Message;

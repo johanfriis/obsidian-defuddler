@@ -68,7 +68,12 @@ object ClipperUi {
             .toString()
 
     /** Upstream's settings page, which is also the template editor (D31 retired D16). */
-    fun settingsUrl(): String = "$ORIGIN/$ASSET_DIR/settings.html"
+    fun settingsUrl(bridgeToken: String): String =
+        Uri.parse("$ORIGIN/$ASSET_DIR/settings.html")
+            .buildUpon()
+            .appendQueryParameter("bridgeToken", bridgeToken)
+            .build()
+            .toString()
 }
 
 /**

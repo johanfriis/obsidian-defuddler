@@ -50,6 +50,13 @@
             android:name=".reader.ReaderActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|uiMode" />
+
+        <!-- Upstream's settings page and template editor. Reachable from the launcher screen so
+             it does not depend on a page loading (D33). -->
+        <activity
+            android:name=".clipper.SettingsActivity"
+            android:exported="false"
+            android:label="@string/action_settings" />
     </application>
 
 </manifest>

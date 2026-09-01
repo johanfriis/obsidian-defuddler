@@ -9,6 +9,12 @@ import { Reader } from '../vendor/obsidian-clipper/src/utils/reader';
 // asks this document through Kotlin (M2.2). It is an IIFE with its own generation guard, so a
 // second injection yields to the newer instance rather than double-answering.
 import '../vendor/obsidian-clipper/src/content';
+// Upstream's reader entry. It is what answers `toggleReaderMode`, which is how the *popup's* Reader
+// button reaches this page (D33) — our own `__clipper.toggle()` is the shell's route, not the
+// clipper UI's. It guards on `window.obsidianReaderInitialized`, the same flag this file sets
+// below, so it has to be imported here at the top: set the flag first and this import becomes a
+// silent no-op with a Reader button that does nothing.
+import '../vendor/obsidian-clipper/src/reader-script';
 import { initializeI18n } from '../vendor/obsidian-clipper/src/utils/i18n';
 import browser, { bundledAssets, hasNativeBridge, receiveFromNative } from '../shim/browser';
 
@@ -182,17 +188,19 @@ function sweepBranding(doc: Document): number {
  * upstream's own strings instead of hardcoding "Highlighter", and it is why this cannot be pure
  * CSS. Each milestone un-ships one line:
  *   - `highlighter` — the pen. M4.
- *   - `addToObsidian` — both the paperclip and the gem button carry this label. M2.
- * The `Aa` panel's own "Settings" row goes with them, by CSS since its class is unique: it opens
- * the *extension's* options page, which does not exist here. Our settings screen is M2.4.
+ * `addToObsidian` left this list at M2.6: both the paperclip and the gem carry that label, and the
+ * gem's `toggleIframe` is now routed to our clip sheet, so it works. That button is *the* one-tap
+ * clip from inside the reader, which is what let the shell bar go (D33).
+ * The `Aa` panel's own "Settings" row is hidden by CSS: it opens the extension's options page,
+ * which upstream builds a link for that we cannot serve from inside the page. Settings is reached
+ * from the clip sheet's gear instead.
  * The TOC and `Aa` are left alone: both are upstream features that already work here, and `Aa` now
  * persists its settings through the bridge (M1.3).
  */
-const UNBUILT_LABEL_KEYS = ['highlighter', 'addToObsidian'];
+const UNBUILT_LABEL_KEYS = ['highlighter'];
 
 const UNBUILT_CONTROLS_CSS = `
 [data-clipper-unbuilt] { display: none !important; }
-.obsidian-reader-clip-dropdown { display: none !important; }
 .obsidian-reader-settings-link-button { display: none !important; }
 `;
 
@@ -298,7 +306,13 @@ async function toggle(cssMode: CssMode = 'inline'): Promise<boolean> {
 }
 
 // Idempotent: Kotlin re-injects on every onPageFinished, and SPA navigation can fire it twice.
-if (!window.obsidianReaderInitialized) {
+//
+// Guarded on our own surface rather than on `obsidianReaderInitialized`, because that flag now has
+// two owners: upstream's reader-script sets it from the import above, which runs first, so guarding
+// on it here skipped this block entirely and left `window.__clipper` undefined — the bridge, the
+// toggle and the reader all gone, with no error. The flag still marks "the reader machinery is
+// installed"; `__clipper` marks "our surface is installed", and this block is what installs it.
+if (!window.__clipper) {
   window.obsidianReaderInitialized = true;
   // Before anything reads the query — upstream's reader consults it during apply.
   if (typeof __clipperDarkMode === 'boolean') installColorSchemeBridge(__clipperDarkMode);

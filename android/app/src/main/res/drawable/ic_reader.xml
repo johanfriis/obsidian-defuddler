@@ -1,0 +1,11 @@
+<!-- Lucide "book-open" — the same glyph upstream uses for reader mode in its popup, so the app's
+     control and the clipper's read as one feature rather than two. -->
+<!-- strokeColor is a placeholder: Compose's Icon tints this from
+     LocalContentColor, so the value here never reaches the screen. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:strokeColor="#FF000000" android:strokeWidth="2"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12,7v14M3,18a1,1 0 0,1 -1,-1V4a1,1 0 0,1 1,-1h5a4,4 0 0,1 4,4a4,4 0 0,1 4,-4h5a1,1 0 0,1 1,1v13a1,1 0 0,1 -1,1h-6a3,3 0 0,0 -3,3a3,3 0 0,0 -3,-3z" />
+</vector>
