@@ -51,6 +51,23 @@ Bumping either pin follows the procedure in §14 — never casually.
 
 ## 1. Decisions log
 
+### Governing principle — defer to the human
+
+*Stated by Johan, 2026-09-01, and it outranks the table below where they conflict.*
+
+**When the machine could decide or the human could, the human decides.** Prefer an action the human
+takes over a default the machine applies; prefer leaving them in front of a working page over dropping
+them into a broken state they must escape; prefer surfacing a failure over silently choosing a
+different route.
+
+This is a principle about *who holds the decision*, not about which outcome is technically better —
+and it holds even when the machine's guess would usually be right. D24 is the worked example: reader
+mode became a tap rather than an automatic transform, and the argument that carries it is that the
+human stays in the loop, **not** the settle-timing rationale (which does not survive scrutiny — see
+M1.6). Decisions already consistent with it: D2 (a failed save is reported, never rerouted), M2.5
+(a bookmark clip is offered, not substituted), M3.3 (template auto-selection preselects; the manual
+override always wins).
+
 Settled decisions. Items marked *(default)* were taken by Claude with Johan's standing option to veto;
 everything else was decided by Johan explicitly.
 
@@ -75,7 +92,7 @@ everything else was decided by Johan explicitly.
 | D18 | `SafWriter` (M2.4) and SAF hardening (M6.3) deferred, not deleted | Follows from D2: with no SAF save path there is nothing to write or harden. **The original justification (SAF bypasses Obsidian's triggers) turned out not to separate the two options — A5 showed `obsidian://` bypasses them too.** What the deferral now rests on is cost: `SafWriter` reimplements append/overwrite that Obsidian gives us free, plus tree-URI permission plumbing to build and harden. Two accepted trades: (1) `obsidian://` always foregrounds Obsidian (A4) — SAF would have allowed a true background save; (2) the URI contract is now a single point of failure — acceptable because notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss. |
 | D19 | Bundle English UI strings only (`LOCALES = ['en']`) and highlight.js's ~40-language `lib/common` rather than the full ~190 | Johan's call, 2026-08-31, confirming the B1 trims. Both degrade gracefully — `getMessage` falls back to English, `highlightElement` leaves an unregistered language unstyled — and both are one-line reverts in `jsbridge/build.mjs`. |
 | D20 | Reader CSS is delivered as an inline `<style>` by default, not upstream's blob-URL `<link>` — for `reader.css` and `highlighter.css` alike | Johan's call, 2026-08-31 at G0. Measured: the blob path is refused by any page with a `style-src` that omits `blob:` (github.com), leaving the reader stripped and unstyled. Inlining costs nothing on pages without CSP, and detecting a refusal in order to fall back is harder than always inlining. Implemented without patching upstream — see `installStyle` in `jsbridge/src/bundle-entry.ts`. |
-| D24 | **Reader mode is user-triggered, not automatic.** The shared page loads and renders normally; the app shell shows a "Reader" toggle. Recourse if extraction is incomplete: wait and re-extract | Johan's call, 2026-09-01, resolving the M1.6 problem B3 opened. Chosen for the failure mode, not the timing: a page that extracts badly leaves Johan looking at the real page he can simply not toggle, instead of dumping him into a broken reader he has to escape. It also makes an on-page login form usable for free, which is what is left of M6.1 after D23. **Note the timing argument does *not* hold** — see M1.6. |
+| D24 | **Reader mode is user-triggered, not automatic.** The shared page loads and renders normally; the app shell shows a "Reader" toggle. Recourse if extraction is incomplete: wait and re-extract | Johan's call, 2026-09-01, resolving the M1.6 problem B3 opened. **Rests on the governing principle above**: the toggle keeps Johan in the decision loop instead of the machine mandating a transform that may land him in a broken state. Secondary benefits: a badly extracting page leaves him looking at the real page he can decline to toggle, and an on-page login form becomes usable for free (what remains of M6.1 after D23). **The settle-timing argument does *not* hold and is not what this rests on** — see M1.6. |
 | D23 | **No generic browser UI, ever.** No URL bar, no back/forward, no tabs, history or downloads. If a page cannot be read without signing in, that is a workaround Johan performs outside the app — or the clip does not happen | Johan's call, 2026-08-31, when the question of pulling M6.1's browsing strip into M1 was raised. He clips from logged-in sites rarely, and a browser surface is far larger than it looks (tabs, downloads, uploads, fullscreen video, permission prompts, PDFs). This bounds M6.1 and overrides the "normal browser chrome" mitigation the Architecture doc used to propose. |
 | D21 | Install a pass-through Trusted Types `default` policy before the reader runs | Johan's call, 2026-08-31 at G0. Without it, pages sending `require-trusted-types-for 'script'` (YouTube) kill the reader outright — Defuddle's `innerHTML` and `Reader.apply`'s `DOMParser` both throw and nothing renders. A browser extension never meets this because its content script runs in an isolated world Trusted Types does not police; our main-world injection is policed. **The accepted trade:** the policy switches off the page's own XSS guard for the life of that document. Johan's reasoning — the reader/clip session is ephemeral, the page is one he chose, and we already inject a bundle that rewrites the whole DOM. Only creatable where the page sends no `trusted-types` directive naming allowed policies; where it is refused we log and the page fails visibly. See `installTrustedTypesPolicy` in `jsbridge/src/bundle-entry.ts`. |
 | D22 | B4's extraction-quality pass is folded into M1.7's fixture harness rather than run as a throwaway spike *(default)* | B3 already exercised extraction on four real pages including the two hard ones (CSP-strict, Trusted Types), so B4's remaining value is markdown/metadata quality on saved fixtures — which is exactly M1.7's job. Same work, but the output is kept and guards every future submodule bump (D14). M0 therefore ends at G0. Two B3 findings carry into M1.7 as fixture cases: unflattened shadow DOM on github, and the YouTube settle-time question. |
@@ -617,6 +634,15 @@ hand-written reader.
   `content=` when clipboard mode is off/failed. No size threshold — A3 found no practical ceiling and
   the oversized case throws catchably, so try and catch rather than pre-checking a magic number. If
   that catch fires, surface the failure to Johan (D2); do not save by another route.
+
+  **Open, and the one place the plan currently sits awkwardly with §1's governing principle.** The
+  behaviour flag comes from the *template*, so re-clipping a URL whose template says `overwrite=true`
+  replaces an existing note in place with no prompt — the machine acting destructively on the human's
+  behalf. A4 measured that the default (no flag) is safe: Obsidian writes `note 1.md` beside
+  `note.md`. Options: (a) leave it — the template is itself Johan's earlier choice, so the human did
+  decide, just in advance; (b) confirm in the clip sheet when the target note already exists and the
+  behaviour is destructive, showing which file will be replaced. **(b) is what the principle argues
+  for; (a) is defensible and cheaper. Johan's call, needed before M2.3 is written.**
 - **M2.4 — Setup screen.** First-run setup: vault name (typed, must match Obsidian's vault name
   exactly), default folder ("Clippings"), silent-open toggle.
   *`SafWriter` and the `ACTION_OPEN_DOCUMENT_TREE` / `takePersistableUriPermission` plumbing are
@@ -633,7 +659,8 @@ hand-written reader.
 - [ ] Article, YouTube page, and extraction-hostile page all land in the vault correctly (the last as a
   bookmark note).
 - [ ] Note name, folder, properties, and body edits in the sheet are reflected in the saved note.
-- [ ] Re-clipping the same URL respects the template behavior (A4 semantics).
+- [ ] Re-clipping the same URL respects the template behavior (A4 semantics), and a destructive
+  behaviour (`overwrite`) does whatever the open question in M2.3 was settled to do.
 - [ ] A very large note (>512 KB) saves via the clipboard path; with clipboard artificially disabled
   the `content=` path reports a clear failure rather than saving silently or truncating (D2).
 - [ ] Backgrounding the app mid-clip with a large note does not crash it — note content stays out of
