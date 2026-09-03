@@ -16,6 +16,8 @@ export async function clipUrlToVault(
 	app: App,
 	url: string,
 	template: Template,
+	/** The vault's property types, which win over the template's (GATE G1). */
+	propertyTypes?: Record<string, string>,
 ): Promise<TFile | null> {
 	const progress = new Notice('Fetching…', 0);
 
@@ -28,6 +30,7 @@ export async function clipUrlToVault(
 			// The URL we actually fetched, so a redirect is reflected in {{url}} and in relative links.
 			url: page.url,
 			template,
+			propertyTypes,
 		});
 
 		progress.setMessage('Saving…');

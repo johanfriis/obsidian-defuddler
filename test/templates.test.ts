@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { Template } from '../vendor/obsidian-clipper/src/api';
 import { clipHtml } from '../src/clip';
-import { DEFAULT_TEMPLATE, pickTemplate } from '../src/templates';
+import { buildTemplate, serialiseTemplate, templateFromExport } from '../src/template-file';
+import { DEFAULT_TEMPLATE, matchByUrl } from '../src/templates';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const noNetwork = () => Promise.reject(new Error('this suite does not reach the network'));
@@ -61,10 +62,55 @@ describe('real templates from kepano/clipper-templates', () => {
 		const wikipedia = loadTemplate('wikipedia-clipper');
 		const all = [DEFAULT_TEMPLATE, youtube, wikipedia];
 
-		expect(pickTemplate(all, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ').id).toBe('youtube-clipper');
-		expect(pickTemplate(all, 'https://en.wikipedia.org/wiki/Obsidian').id).toBe('wikipedia-clipper');
-		expect(pickTemplate(all, 'https://de.wikipedia.org/wiki/Obsidian').id).toBe('wikipedia-clipper');
-		// No trigger matches, so the first template stands in — M2 turns this into a preselection.
-		expect(pickTemplate(all, 'https://apnews.com/article/whatever').id).toBe('default');
+		expect(matchByUrl(all, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ')?.id).toBe('youtube-clipper');
+		expect(matchByUrl(all, 'https://en.wikipedia.org/wiki/Obsidian')?.id).toBe('wikipedia-clipper');
+		expect(matchByUrl(all, 'https://de.wikipedia.org/wiki/Obsidian')?.id).toBe('wikipedia-clipper');
+		// Nothing matches, so the picker has no preselection to offer and opens unsorted.
+		expect(matchByUrl(all, 'https://apnews.com/article/whatever')).toBeUndefined();
+	});
+});
+
+describe('importing a real export', () => {
+	it('converts kepano\'s YouTube template and clips the same as the raw JSON did', async () => {
+		const raw = JSON.parse(
+			readFileSync(join(fixtures, 'templates', 'youtube-clipper.json'), 'utf8'),
+		);
+		const html = readFileSync(join(fixtures, 'youtube-watch.html'), 'utf8');
+		const url = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+
+		// The export as upstream's type wants it, for the baseline.
+		const direct = await clipHtml({ html, url, template: { ...raw, id: 'raw' }, defuddle: { fetch: noNetwork } });
+
+		// The same export through our converter, out to a file, and back in the way the loader reads it.
+		const converted = templateFromExport(raw);
+		const text = serialiseTemplate(converted);
+		const roundTripped = buildTemplate('youtube-clipper', {
+			name: converted.name,
+			behavior: converted.behavior,
+			path: converted.path,
+			noteNameFormat: converted.noteNameFormat,
+			triggers: converted.triggers,
+		}, text.slice(text.indexOf('---', 3) + 4));
+
+		const viaFile = await clipHtml({
+			html,
+			url,
+			template: roundTripped,
+			// The types the export carried are dropped by the converter, so the vault supplies them.
+			// These are the ones kepano's file declared, which is what makes the two runs comparable.
+			propertyTypes: { author: 'multitext', published: 'date' },
+			defuddle: { fetch: noNetwork },
+		});
+
+		expect(viaFile.noteName).toBe(direct.noteName);
+		expect(viaFile.frontmatter).toBe(direct.frontmatter);
+		expect(viaFile.content).toBe(direct.content);
+		expect(viaFile.fullContent).toBe(direct.fullContent);
+		expect(roundTripped.triggers).toEqual(['https://www.youtube.com/watch?v=']);
+	});
+
+	it('refuses an export with no name, and one that is not an object', () => {
+		expect(() => templateFromExport({ behavior: 'create' })).toThrow(/no `name`/);
+		expect(() => templateFromExport('nope')).toThrow(/not a template object/);
 	});
 });

@@ -426,11 +426,12 @@ main.ts                 plugin entry: commands, protocol handler, lifecycle
 src/clip.ts             the engine: our clip() (G3), plus readableText
 src/pipeline.ts         URL in, note out — the seam every entry point uses
 src/fetch.ts            requestUrl: obsidianFetch for Defuddle, fetchPage for us
-src/templates.ts        the default template and trigger matching; the vault
-                        folder loader is M2
+src/templates.ts        the default template, the folder loader, trigger matching
+src/template-file.ts    the G1 format: parse, serialise, and JSON import
+src/property-types.ts   the vault's property types, which win over a template's
+src/settings.ts         the persisted settings; the tab is M3
 src/save.ts             create; the other five behaviours are M4
-src/settings.ts         the settings definitions                               (M3)
-src/ui/url-prompt.ts    the URL prompt; the template picker is M2
+src/ui/                 url-prompt, template-picker, json-import
 manifest.json  versions.json  styles.css
 esbuild.config.mjs      the build, and the two resolutions §3 depends on
 typecheck.mjs           tsc, minus the submodule's own diagnostics
@@ -593,6 +594,23 @@ is that check, and it has its own tests.
 
 ## 8. M2 — Templates in the vault
 
+**Built 2026-09-04.** Templates are markdown files in a vault folder, in the format GATE G1 settled;
+the loader, the picker, the JSON importer and the vault-types lookup all exist and are tested.
+
+**Four choices made while building it, none big enough for the decisions log but all worth knowing:**
+
+- **The default folder is `Defuddler` at the vault root, not under `Templates/`.** Templater's
+  `templates_folder` is `Templates`, so anything put there shows up in Templater's own picker. It is
+  a setting; M3 gives it a UI.
+- **A property's `type` is dropped on import.** G1 puts types in the vault, and a type carried inside
+  one template would quietly win over the vault's answer for that template alone. The surprise costs
+  more than the fidelity.
+- **The picker does not open when there is exactly one template.** Deferring to the human means
+  letting them decide, not making them confirm a choice that has one option.
+- **Trailing newlines are stripped from the body at parse time.** A markdown file always ends with
+  one; that is a property of the file, not of the template, and without stripping it every clipped
+  note inherits a blank line nobody wrote.
+
 ### Tasks
 
 1. Setting: template folder path, defaulting to something under the vault root.
@@ -632,16 +650,24 @@ sources. This is pinned in `test/templates.test.ts` so nobody goes hunting.
 
 ### Acceptance
 
-- [ ] Templates authored in the vault appear in the picker without restarting Obsidian.
-- [ ] A malformed template names itself in a `Notice` and does not take the others down.
-- [ ] A template with a URL trigger is preselected for a matching URL and not for a non-matching one.
-- [ ] A placeholder in the fence needs no quoting: `published: {{published|date:"YYYY-MM-DD"}}` written
-      bare produces a correct date property.
-- [ ] `tags` lands as a real YAML list purely because the vault types it that way, with the template
+- [x] A malformed template names itself and does not take the others down — two kinds, an unknown
+      `behavior` and an unclosed fence, both reported by path.
+- [x] A template with a URL trigger is preselected for a matching URL and not for a non-matching one,
+      for prefix triggers and regex triggers alike.
+- [x] A placeholder in the fence needs no quoting: `published: {{published|date:"YYYY-MM-DD"}}`
+      written bare parses correctly, which a YAML parser could not do.
+- [x] `tags` lands as a real YAML list purely because the vault types it that way, with the template
       saying nothing about types.
-- [ ] A title containing a colon and a double quote produces valid frontmatter.
-- [ ] With the vault's type file removed, clipping still succeeds and every property is quoted text.
-- [ ] A web-clipper JSON export converts to a template file that clips.
+- [x] A title containing a colon and a double quote produces valid frontmatter.
+- [x] With the vault's type file removed, clipping still succeeds and every property is quoted text.
+- [x] **A web-clipper JSON export converts to a template file that clips.** Proven the strong way:
+      kepano's YouTube export goes through the converter, out to the file format, back in through the
+      loader, and clips **byte-identically** to the raw JSON template.
+- [x] The folder is seeded with a default template when empty, and a second run neither duplicates
+      nor overwrites it.
+- [ ] **Needs the app:** templates authored in the vault appear in the picker without restarting
+      Obsidian. The reload is wired to the metadata cache and to vault create/modify/delete/rename,
+      but only the app can prove the timing.
 
 ## 9. M3 — Settings
 

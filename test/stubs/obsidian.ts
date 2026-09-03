@@ -45,9 +45,12 @@ export class Notice {
 export class Plugin {}
 export class TFile {
 	path = '';
+	basename = '';
+	extension = '';
 }
 export class TFolder {
 	path = '';
+	children: unknown[] = [];
 }
 export class Modal {}
 export class Setting {}

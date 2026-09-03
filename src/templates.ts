@@ -1,39 +1,121 @@
+import { TFile, TFolder, normalizePath } from 'obsidian';
+import type { App } from 'obsidian';
 import { matchTemplate } from '../vendor/obsidian-clipper/src/api';
 import type { Template } from '../vendor/obsidian-clipper/src/api';
+import { TemplateFileError, buildTemplate, serialiseTemplate } from './template-file';
 
 /**
- * The template M1 clips with, and the one M2 writes into the vault on first run.
+ * The template M2 writes into the vault on first run, and the one M1 clipped with.
  *
- * Modelled on the clips already in Sanctum's `Clippings` folder: title, source, author, published,
- * a creation stamp and an empty tag list to fill in by hand. Types are spelled out here because
- * nothing reads the vault's property configuration yet — that is M2, and it will make most of these
- * redundant (GATE G1).
+ * Modelled on the clips already in Sanctum's `Clippings` folder: title, source, author, published, a
+ * creation stamp, and an empty tag list to fill in by hand. The types here are vestigial — since
+ * GATE G1 the vault supplies them, and a template file cannot express one.
  */
 export const DEFAULT_TEMPLATE: Template = {
-	id: 'default',
+	id: 'Default',
 	name: 'Default',
 	behavior: 'create',
 	path: 'Clippings',
 	noteNameFormat: '{{title}}',
 	noteContentFormat: '{{content}}',
 	properties: [
-		{ name: 'title', value: '{{title}}', type: 'text' },
-		{ name: 'source', value: '{{url}}', type: 'text' },
-		{ name: 'author', value: '{{author}}', type: 'text' },
-		{ name: 'published', value: '{{published}}', type: 'date' },
-		{ name: 'created', value: '{{date}} {{time}}', type: 'datetime' },
-		{ name: 'tags', value: '', type: 'multitext' },
+		{ name: 'title', value: '{{title}}' },
+		{ name: 'source', value: '{{url}}' },
+		{ name: 'author', value: '{{author}}' },
+		{ name: 'published', value: '{{published}}' },
+		{ name: 'created', value: '{{date}} {{time}}' },
+		{ name: 'tags', value: '' },
 	],
 };
 
+export interface TemplateLoadError {
+	file: string;
+	message: string;
+}
+
+export interface LoadedTemplates {
+	templates: Template[];
+	errors: TemplateLoadError[];
+}
+
+/** Everything between the opening and closing `---` of a file's own frontmatter, removed. */
+function stripFrontmatter(markdown: string): string {
+	const match = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(markdown);
+	return match ? markdown.slice(match[0].length) : markdown;
+}
+
+function collectMarkdown(folder: TFolder, into: TFile[]): void {
+	for (const child of folder.children) {
+		if (child instanceof TFolder) collectMarkdown(child, into);
+		else if (child instanceof TFile && child.extension === 'md') into.push(child);
+	}
+}
+
 /**
- * Upstream's trigger matching, with a fallback. M1 has one template so this always returns it; M2
- * gives it a list and a picker, where the match becomes a *preselection* rather than a choice
+ * Reads every template in the folder.
+ *
+ * A bad file names itself and is skipped; it never takes the others down with it. The frontmatter is
+ * Obsidian's own parse rather than ours, so quoting and list syntax are its problem — which is also
+ * why a file the metadata cache has not indexed yet reports as an error and is picked up by the next
+ * reload rather than being guessed at.
+ */
+export async function loadTemplates(app: App, folderPath: string): Promise<LoadedTemplates> {
+	const folder = app.vault.getAbstractFileByPath(normalizePath(folderPath));
+	if (!(folder instanceof TFolder)) return { templates: [], errors: [] };
+
+	const files: TFile[] = [];
+	collectMarkdown(folder, files);
+	files.sort((a, b) => a.basename.localeCompare(b.basename));
+
+	const templates: Template[] = [];
+	const errors: TemplateLoadError[] = [];
+
+	for (const file of files) {
+		try {
+			const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter ?? null;
+			const markdown = stripFrontmatter(await app.vault.cachedRead(file));
+			templates.push(buildTemplate(file.basename, frontmatter, markdown));
+		} catch (error) {
+			errors.push({
+				file: file.path,
+				message:
+					error instanceof TemplateFileError
+						? error.message
+						: error instanceof Error
+							? error.message
+							: String(error),
+			});
+		}
+	}
+
+	return { templates, errors };
+}
+
+/** Creates the folder if missing, and seeds the default template when it holds no markdown. */
+export async function ensureTemplateFolder(app: App, folderPath: string): Promise<void> {
+	const path = normalizePath(folderPath);
+	if (!path) return;
+
+	const existing = app.vault.getAbstractFileByPath(path);
+	if (existing instanceof TFile) return;
+	if (!existing) await app.vault.createFolder(path);
+
+	const { templates } = await loadTemplates(app, path);
+	if (templates.length > 0) return;
+
+	const seedPath = normalizePath(`${path}/${DEFAULT_TEMPLATE.name}.md`);
+	if (!app.vault.getAbstractFileByPath(seedPath)) {
+		await app.vault.create(seedPath, serialiseTemplate(DEFAULT_TEMPLATE));
+	}
+}
+
+/**
+ * Upstream's trigger matching. The result is a *preselection* for the picker, never an application
  * (P4, and the governing principle above it).
  *
- * Schema triggers are not passed: they need Defuddle to have parsed already (§3, fact 3), so M1
- * matches on URL triggers alone.
+ * Schema triggers are not passed: they need Defuddle to have parsed already (§3, fact 3), so URL
+ * triggers — prefixes and `/regex/` — are what matches here.
  */
-export function pickTemplate(templates: Template[], url: string): Template {
-	return matchTemplate(templates, url) ?? templates[0];
+export function matchByUrl(templates: Template[], url: string): Template | undefined {
+	return matchTemplate(templates, url);
 }
