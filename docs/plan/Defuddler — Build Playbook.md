@@ -429,6 +429,7 @@ src/fetch.ts            requestUrl: obsidianFetch for Defuddle, fetchPage for us
 src/templates.ts        the default template, the folder loader, trigger matching
 src/template-file.ts    the G1 format: parse, serialise, and JSON import
 src/property-types.ts   the vault's property types, which win over a template's
+src/youtube-captions.ts the only file that knows what a YouTube page looks like
 src/settings.ts         the persisted settings; the tab is M3
 src/save.ts             create; the other five behaviours are M4
 src/ui/                 url-prompt, template-picker, json-import
@@ -668,6 +669,45 @@ sources. This is pinned in `test/templates.test.ts` so nobody goes hunting.
 - [ ] **Needs the app:** templates authored in the vault appear in the picker without restarting
       Obsidian. The reload is wired to the metadata cache and to vault create/modify/delete/rename,
       but only the app can prove the timing.
+
+### Found in use — the transcript language, 2026-09-04
+
+Johan clipped an English video and got a Traditional Chinese transcript. Not a clipping bug: Defuddle
+only chooses a caption track deliberately when it is given a `language`, and we gave none. Its
+fallback drops the auto-generated tracks, looks for a code that is exactly `en`, and otherwise takes
+whichever track is first — Chinese, on that video.
+
+| `language` given | Result |
+|---|---|
+| none | Chinese, 3,576 chars |
+| `en` | English **auto-generated**, 9,206 |
+| `en-US` | English **human-written**, 6,788 |
+| `da` | Chinese again |
+
+Two traps beyond the headline, and they are why a plain language setting would not have been enough.
+A language the video does not carry lands in the same arbitrary fallback. And a bare `en` gets the
+auto-generated captions even when a human-written `en-US` exists, because the exact-code match runs
+before the auto-generated tracks are filtered out.
+
+**Johan's requirement:** English only, human-written in preference to auto-generated. So
+`src/youtube-captions.ts` reads the track list off the fetched page and hands Defuddle an exact code.
+It is the one file that knows YouTube's shape, and it is written to lose quietly — no caption block,
+an unfamiliar shape, or no English track all return nothing, which leaves Defuddle's own behaviour
+alone. A page that is not YouTube never reaches it.
+
+`youtube-multitrack.html` joined the fixtures for this. The Rick Astley page carries one caption
+track and so could never have shown the bug.
+
+**A second thing that clip exposed, and it was ours.** The seeded template had
+`created: {{date}} {{time}}`, written on the assumption that those are a date and a time. They are
+the same full timestamp, so every clip stamped it twice. It is now
+`created: {{date|date:"YYYY-MM-DD HH:mm"}}`, which is also the shape Sanctum's existing clips use.
+Both template files in the vault were corrected in place.
+
+**A third, working as designed.** `published` landed as a quoted string because Sanctum's property
+types carry no entry for it. That is G1 behaving correctly: setting the type once in Obsidian's own
+property settings fixes it for every template, with no template edit. The same goes for `source` and
+`author`.
 
 ## 9. M3 — Settings
 

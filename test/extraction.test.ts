@@ -41,6 +41,7 @@ const SOURCE_URLS: Record<string, string> = {
     'https://apnews.com/article/apple-iphone-keyboard-typing-tricks-shortcuts-78fd9488e6a1ebc0840be8a0d1d42032',
   'github-readme.html': 'https://github.com/obsidianmd/obsidian-clipper',
   'youtube-watch.html': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+  'youtube-multitrack.html': 'https://www.youtube.com/watch?v=G3kuMWediSQ',
   'instagram-wall.html': 'https://www.instagram.com/explore/',
 };
 
@@ -137,6 +138,19 @@ describe('extraction fixtures', () => {
     expect(result.content).toContain('<h2>Transcript</h2>');
     expect(result.content).toContain('We\'re no strangers to love');
     expect(result.wordCount ?? 0).toBeGreaterThan(400);
+  });
+
+  it('youtube-multitrack — eleven caption tracks, and none of them chosen by accident', async () => {
+    // Captured 2026-09-04 because the Rick Astley page carries a single caption track and so could
+    // never have shown this: given no language, Defuddle picks the first non-auto track, which here
+    // is Traditional Chinese for an English video. `src/youtube-captions.ts` is what stops that, and
+    // `test/youtube-captions.test.ts` reads this file to prove it.
+    const result = await extract('youtube-multitrack.html');
+    expect(result.title).toContain('Witcher');
+    expect(result.author).toBeTruthy();
+    // No network here, so the body is the embed alone — the transcript is a live fetch either way.
+    expect(result.wordCount ?? 0).toBe(0);
+    expect(shape(result.content)).toMatchSnapshot();
   });
 
   it('instagram — extraction yields nothing, which is M2.5 bookmark territory', async () => {

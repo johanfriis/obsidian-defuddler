@@ -27,3 +27,10 @@ exports[`extraction fixtures > youtube — title, author and the embed, with the
   "head": "<iframe width="560" height="315" src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; cl",
 }
 `;
+
+exports[`extraction fixtures > youtube-multitrack — eleven caption tracks, and none of them chosen by accident 1`] = `
+{
+  "chars": 262,
+  "head": "<iframe width="560" height="315" src="https://www.youtube.com/embed/G3kuMWediSQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; cl",
+}
+`;

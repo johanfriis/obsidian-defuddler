@@ -44,6 +44,8 @@ describe('loading templates from the vault', () => {
 		const seeded = vault.contents.get('Defuddler/Default.md');
 		expect(seeded).toBeTruthy();
 		expect(seeded).toContain('source: {{url}}');
+		// The filter shapes the stamp; `{{date}}` and `{{time}}` are the same value, not two.
+		expect(seeded).toContain('created: {{date|date:"YYYY-MM-DD HH:mm"}}');
 
 		// A second run must not add another copy or overwrite the first.
 		vault.contents.set('Defuddler/Default.md', `${seeded!}\nedited by hand\n`);

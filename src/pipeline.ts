@@ -4,6 +4,7 @@ import type { Template } from '../vendor/obsidian-clipper/src/api';
 import { clipHtml, readableText } from './clip';
 import { FetchError, fetchPage } from './fetch';
 import { createNote } from './save';
+import { transcriptLanguageFor } from './youtube-captions';
 
 /**
  * URL in, note out. The whole of M1's happy path, and the seam every entry point uses: the command,
@@ -25,12 +26,16 @@ export async function clipUrlToVault(
 		const page = await fetchPage(url);
 
 		progress.setMessage('Extracting…');
+		// Only a YouTube watch page has caption tracks, so this is `undefined` everywhere else and
+		// Defuddle keeps its own behaviour. See src/youtube-captions.ts for why it needs help here.
+		const language = transcriptLanguageFor(page.html);
 		const result = await clipHtml({
 			html: page.html,
 			// The URL we actually fetched, so a redirect is reflected in {{url}} and in relative links.
 			url: page.url,
 			template,
 			propertyTypes,
+			defuddle: language ? { language } : undefined,
 		});
 
 		progress.setMessage('Saving…');

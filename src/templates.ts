@@ -23,7 +23,10 @@ export const DEFAULT_TEMPLATE: Template = {
 		{ name: 'source', value: '{{url}}' },
 		{ name: 'author', value: '{{author}}' },
 		{ name: 'published', value: '{{published}}' },
-		{ name: 'created', value: '{{date}} {{time}}' },
+		// `{{date}}` and `{{time}}` are the same full timestamp, not a date and a time — so writing
+		// both duplicated it. The filter is what shapes it, and this shape matches the `created`
+		// already in Sanctum's clips.
+		{ name: 'created', value: '{{date|date:"YYYY-MM-DD HH:mm"}}' },
 		{ name: 'tags', value: '' },
 	],
 };

@@ -6,7 +6,8 @@ as a moved snapshot rather than as a surprise on the phone.
 
 ## How these were captured
 
-`curl` with the app's own user-agent, on 2026-09-01:
+`curl` with the app's own user-agent, on 2026-09-01 — except `youtube-multitrack.html`, captured the
+same way on 2026-09-04:
 
 ```bash
 UA="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36"
@@ -27,6 +28,7 @@ for resolving relative links, so a fixture without one is not usable.
 | `apnews-article.html` | A real news article — the daily-driver case. |
 | `github-readme.html` | A README inside a heavy app shell. |
 | `youtube-watch.html` | Title, author, the embed, and the **transcript**. |
+| `youtube-multitrack.html` | Eleven caption tracks, and the trap that comes with them (below). |
 | `instagram-wall.html` | A page that defeats extraction entirely — M2.5's bookmark fallback. |
 
 ## What these fixtures cannot tell you
@@ -53,3 +55,23 @@ than assumed:
 
 A session tempted to "fix" the shadow-DOM gap by editing a fixture by hand should not: a
 hand-authored DOM would guard the fixture, not the site.
+
+## `youtube-multitrack.html`, and why one YouTube fixture was not enough
+
+Captured after Johan clipped an English video and got a Traditional Chinese transcript.
+
+The Rick Astley page carries a single caption track, so it could never have shown this. This one
+carries eleven — `en` (auto-generated), `en-US`, `fr`, `it`, `zh-Hant`, `ko`, `pl`, `pt-BR`, `ru`,
+`es`, `uk` — and given no `language` option Defuddle drops the auto-generated tracks, looks for one
+whose code is exactly `en`, finds none, and takes whichever is first. That is `zh-Hant`.
+
+Two further traps in the same place, both measured on this file:
+
+- Asking for a language the video does not carry lands in exactly the same fallback. `da` gives
+  Chinese too.
+- Asking for a bare `en` gets the **auto-generated** captions, because the exact-code match happens
+  before the auto-generated tracks are filtered out — even though a human-written `en-US` exists.
+
+`src/youtube-captions.ts` reads the track list off the page and hands Defuddle an exact code.
+Measured end to end on this fixture: `en-US`, 6,788 chars of human-written English, against 3,576 of
+Chinese without it.
