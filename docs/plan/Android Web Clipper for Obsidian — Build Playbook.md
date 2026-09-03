@@ -62,9 +62,6 @@ Bumping either pin follows the procedure in §14 — never casually.
 
   **What is left, in the order I would take it — all of it is in §8's task list with detail:**
 
-  1. **M2.3's failure half.** The happy path is done; what is unproven is D2's promise that a failed
-     save is *reported*, never silently rerouted. Upstream's `tryClipboardWrite` does reroute
-     silently. On the device the clipboard path succeeds (§2), so this needs forcing.
   2. ~~**M2.7's remaining gap.**~~ **Closed 2026-09-03.** `browser.commands.getAll` went by
      deleting the Hotkeys section rather than stubbing the API; the reader dropdown's
      `copyMarkdownToClipboard` / `saveMarkdownToFile` stay unrouted **by choice** — see M2.7.
@@ -121,7 +118,7 @@ everything else was decided by Johan explicitly.
 | # | Decision | Rationale |
 |---|---|---|
 | D1 | Dedicated Android app, not a browser extension | Mobile browsers relay `obsidian://` unreliably; a first-class app fires the intent itself (Brief). |
-| D2 | Save via `obsidian://new`, clipboard-first, with `content=` as the only fallback. No SAF write path. On failure, tell Johan — never save by another route | **Rationale corrected at G0/A5 (2026-08-31).** The Brief's premise — that the URI lets Obsidian run its usual import triggers — is measurably false: Templater's on-create trigger does *not* fire for notes created via `obsidian://new`. The decision stands on what survives: no tree-URI plumbing to build or harden, Obsidian implements dedup/append/overwrite for us, and the note enters Obsidian's index immediately. Failure is reported rather than rerouted, because a save that silently takes a different path is worse than a visible error. |
+| D2 | Save via `obsidian://new`, clipboard-first, with `content=` as the only fallback. No SAF write path. ~~On failure, tell Johan — never save by another route~~ **Narrowed by D36 (2026-09-03): guarding the silent reroute is out of scope** | **Rationale corrected at G0/A5 (2026-08-31).** The Brief's premise — that the URI lets Obsidian run its usual import triggers — is measurably false: Templater's on-create trigger does *not* fire for notes created via `obsidian://new`. The decision stands on what survives: no tree-URI plumbing to build or harden, Obsidian implements dedup/append/overwrite for us, and the note enters Obsidian's index immediately. The reporting clause does not survive contact with D36 — see there for why. |
 | D3 | Three-layer architecture: upstream clip engine (dependency) + vendored reader/highlighter + native Kotlin/Compose shell | See [Architecture & Rationale](<Android Web Clipper for Obsidian — Architecture & Rationale.md>). |
 | D4 | Reader (M1) before clip/save (M2) | Johan's call, 2026-08-30. The reading experience is part of the daily driver, not polish. |
 | D5 | v1 = M0 + M1 + M2 + M3 (templates incl. import and URL auto-selection). Post-v1 order: highlighter → in-app login/polish; G2 reconfirms | Johan's call, 2026-08-30. Reader style settings were on the post-v1 list until 2026-09-01: screenshot 2 turned out to be upstream's own `Aa` panel, delivered at M1.3 and closed at M1.8 (§12), so there is nothing left to order. |
@@ -155,6 +152,7 @@ everything else was decided by Johan explicitly.
 | D33 | **Chrome is ~~two mini FABs~~ one FAB menu — `Reader` and `Clip`, bottom right (the FAB half superseded by D35, 2026-09-03; the rest stands). No shell bar, no `Reload`, and no setup screen** | Johan's call, 2026-09-01, once D31 made upstream's UI the control surface. Three deletions and one keep. **`Reload` retired:** toggling the reader off already ends in `window.location.reload()`, so D26's recovery is "toggle off, wait, toggle on", and a page that fails outright still gets the error pane's Retry — what remained was a permanent button for "the raw page rendered wrong". **Pull-to-refresh was considered and rejected**: `SwipeRefreshLayout` around a WebView fights the page's own scroll and any site with its own gesture, and a recovery action should not be gesture-dependent. **M2.4's setup screen deleted:** `saveToObsidian` omits `&vault=` when no vault is set, so Obsidian saves to whichever vault is open — for a one-vault user that is *more* reliable than typing a name that has to match exactly, and templates carry their own vault and path besides. Settings live on upstream's own page, reachable from the clip sheet's gear and from the launcher screen (so a page that will not load cannot lock you out). **Both FABs kept at one tap** because both actions are frequent: every shared link is read, many are clipped. Folding `Reader` into the sheet would have put the *more* common action two taps and a modal behind the less common one — D4 ordered the reader first for that reason. **That last clause is what D35 revisited**: a menu costs the same second tap, but spends it on a labelled choice rather than on a modal. |
 | D34 | **Personal use only: no branding work, no shipped licence notices.** The Obsidian mark is left where upstream put it, and `THIRD_PARTY_LICENSES` is not assembled | Johan's call, 2026-09-03: *"this app will only be for personal use (for the longest time at least)… I will not be sharing it with anyone."* Both obligations that D15 encoded — MIT attribution and upstream's trademark carve-out — are triggered by **distribution**, and there is none: one sideloaded APK on one phone, from a private repo. Retires D15 and G2's branding constraint, deletes M1.5's sweep, and empties §17. **The one condition that reverses this: handing the APK to anyone else.** At that point the sweep is recoverable at `c2a1e6f` and §17's notice table is in that same commit's history. |
 | D35 | **One FAB that opens a three-item menu, not two permanent FABs.** Tap to expand; the main button becomes `Clip` under the finger that just tapped, `Reader` pops out above it and `Settings` above that; tapping anywhere else, or Back, closes it | Johan's call, 2026-09-03: the pair *"takes up a lot of space"*. Collapsed chrome goes from 88dp to 56dp over the page. **The cost is a tap on every action** — the core flow is 4 taps where it was 2 — and it was accepted explicitly rather than overlooked: *"I do not mind the extra click for the clarity."* A context-aware single FAB (`Reader` when off, `Clip` when on) was offered as the cheaper alternative and **rejected in favour of the explicit menu**; recorded so it is not re-proposed. The one-tap clip from inside the reader is unaffected — the toolbar's own gem still opens the sheet (M2.6). **`Settings` was added the same day**, once the menu existed to hold it: it had been reachable only from the launcher screen or the clip sheet's gear, i.e. never from the page you are looking at. Items are ordered by how often each is wanted, so the rarest sits farthest from the thumb. |
+| D36 | **M2.3's failure half is out of scope. `tryClipboardWrite`'s silent reroute to `&content=` is left unguarded** | Johan's call, 2026-09-03, after being walked through what actually triggers it: `navigator.clipboard.writeText` throwing on Android is not something the happy path exercises — it needs the WebView to lack focus at the write (it never does; the tap that opens the save *is* the activation), a note past whatever the clipboard's practical limit turns out to be on this phone, or an OEM clipboard restriction, untested on the Find N6. *"I don't actually think this is a feature I need."* Proving a fix would have meant a debug-only fault injector, since the real failure has never once fired here. **Retires the reporting half of D2**; the save-path shape D2 argued for (`obsidian://new`, clipboard-first, no SAF) stands untouched. Reversible: if the reroute is ever seen for real, M2.3 has the fix already scoped (§8, pre-2026-09-03 text, in this commit's parent). |
 
 ## 2. Gate outcomes
 
@@ -390,8 +388,8 @@ Still missing, both small: `browser.commands.getAll` (settings' Hotkeys section)
    `obsidian://new?file=…&clipboard&content=<short error>` — the clipboard path, taken. The spike had
    simply lacked focus and a user gesture; `WebViewAssetLoader`'s origin is a real https origin, so
    `navigator.clipboard` is available there, which is one of the reasons that origin was the right
-   choice. **The silent reroute is still in upstream's code**, so M2.3 keeps the acceptance box that
-   forces it and checks the failure is reported — but it is a latent path, not the default.
+   choice. **The silent reroute is still in upstream's code, and stays unguarded (D36, 2026-09-03)**
+   — it is a latent path, not the default, and Johan decided against building for it. See D36.
 2. **The popup calls `window.close()` after a successful clip.** It killed the spike's browser tab
    mid-test. In a WebView that surfaces as `WebChromeClient.onCloseWindow`; the app must dismiss the
    UI WebView on it or be left with a dead sheet.
@@ -974,19 +972,19 @@ The Kotlin here is plumbing; the clipper is upstream's.
   **Both documents must expose `window.__clipper.receive`.** The router has one call site for two
   WebViews. When the UI document lacked it, every reply landed on nothing and the sheet rendered but
   stayed empty until the shim's timeout — a failure with no error anywhere.
-- **M2.3 — Save, via upstream. *Happy path done at M2.2*; what remains is the failure half.**
-  `saveToObsidian()` builds the URI and `openObsidianUrl` reaches Kotlin, which fires the intent —
-  verified on device, taking the `&clipboard` path. No `ObsidianUri.kt`, no `SavePipeline.kt`.
-  Note the route differs from what this task first assumed: `openObsidianUrl` arrives as a *message*
-  the router turns into an intent, rather than a navigation caught by `shouldOverrideUrlLoading`.
-  `ClipperUiWebViewClient` still overrides non-`http(s)` navigations, as a second door for any path
-  that navigates instead of messaging.
-  Two things M2.0 found that this task owns:
-  - **Back `copyToClipboard` with Kotlin's `ClipboardManager`, or make its failure loud.** Upstream's
-    `tryClipboardWrite` silently reroutes to a full `content=` URI when the clipboard write fails —
-    D2 forbids exactly that. Measured in the spike, not hypothesised.
-  - **Handle `onCloseWindow`.** Upstream's popup calls `window.close()` after a successful clip.
-    Dismiss the UI WebView on it, or the sheet is left dead on screen.
+- **M2.3 — Save, via upstream. DONE.** `saveToObsidian()` builds the URI and `openObsidianUrl`
+  reaches Kotlin, which fires the intent — verified on device, taking the `&clipboard` path. No
+  `ObsidianUri.kt`, no `SavePipeline.kt`. Note the route differs from what this task first assumed:
+  `openObsidianUrl` arrives as a *message* the router turns into an intent, rather than a navigation
+  caught by `shouldOverrideUrlLoading`. `ClipperUiWebViewClient` still overrides non-`http(s)`
+  navigations, as a second door for any path that navigates instead of messaging.
+  - **Handle `onCloseWindow`. DONE.** Upstream's popup calls `window.close()` after a successful
+    clip; the UI WebView is dismissed on it, so the sheet is not left dead on screen.
+  - ~~Back `copyToClipboard` with Kotlin's `ClipboardManager`, or make its failure loud.~~ **OUT OF
+    SCOPE (D36, 2026-09-03).** Upstream's `tryClipboardWrite` does silently reroute to a full
+    `content=` URI on a failed clipboard write — measured in the M2.0 spike, not hypothesised — but
+    Johan decided against guarding it once walked through what actually triggers it on this phone.
+    See D36.
   Behaviour flags are executed as written (D30) — upstream already does this; do not add a prompt.
   A3's landmine still stands: **note content must never enter saved instance state**, at any size.
 - **M2.4 — ~~First-run setup~~ DELETED (D33, 2026-09-01).** There is no setup screen and no vault
@@ -1118,8 +1116,9 @@ The Kotlin here is plumbing; the clipper is upstream's.
 - [ ] Note name, folder, properties, and body edits in the sheet are reflected in the saved note.
 - [ ] Re-clipping the same URL respects the template behavior (A4 semantics); a template with
   `overwrite=true` replaces the note in place, unprompted (D30).
-- [ ] A very large note (>512 KB) saves via the clipboard path; with clipboard artificially disabled the
-  failure is **reported**, not silently rerouted to `content=` (D2 — M2.0 measured the silent reroute).
+- [x] ~~A very large note (>512 KB) saves via the clipboard path; with clipboard artificially disabled
+  the failure is **reported**, not silently rerouted to `content=`.~~ **Withdrawn (D36, 2026-09-03)** —
+  out of scope; the silent reroute stands unguarded.
 - [x] The sheet closes cleanly after a save (`onCloseWindow`) and the app returns to the page.
   *2026-09-01: verified — the note landed, Obsidian foregrounded (A4), and the app was back on the
   raw page when returned to. (Tested before D33; the chrome is now the two FABs.)*
