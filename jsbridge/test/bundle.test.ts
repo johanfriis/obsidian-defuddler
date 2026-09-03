@@ -154,26 +154,6 @@ describe('clipper-bundle', () => {
     expect(run('document.querySelectorAll("#obsidian-reader-styles").length')).toBe(1);
   });
 
-  it('replaces the Obsidian mark in the reader toolbar (M1.5, §17)', () => {
-    // The gem is the only 256-grid icon among the toolbar's 24-grid lucide shapes, which is what
-    // the sweep matches on. Built by hand here because Reader.apply needs a real browser.
-    run(`document.body.innerHTML =
-      '<div class="obsidian-reader-nav">' +
-      '<button class="nav-btn"><svg viewBox="0 0 256 256"><path d="M94.82 149.44"/></svg></button>' +
-      '</div>'`);
-    expect(run('window.__clipper.sweepBranding(document)')).toBe(1);
-    expect(run('document.querySelectorAll(\'.obsidian-reader-nav svg\').length')).toBe(1);
-    expect(run('document.querySelector(".obsidian-reader-nav svg").getAttribute("viewBox")')).toBe(
-      '0 0 24 24',
-    );
-  });
-
-  it('is a no-op on a toolbar that carries no mark', () => {
-    run(`document.body.innerHTML =
-      '<div class="obsidian-reader-nav"><button class="nav-btn"><svg viewBox="0 0 24 24"></svg></button></div>'`);
-    expect(run('window.__clipper.sweepBranding(document)')).toBe(0);
-  });
-
   it('leaves every reader-toolbar control in place — the unbuilt list is empty (M2.7)', () => {
     // The list emptied out as the milestones landed: `addToObsidian` at M2.6 (its `toggleIframe`
     // opens our clip sheet) and `highlighter` at M2.7 (`Reader.toggleHighlighter` is local to the

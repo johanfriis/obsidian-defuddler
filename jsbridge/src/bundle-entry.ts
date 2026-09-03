@@ -39,8 +39,6 @@ interface ClipperBundle {
   installReaderCss: () => boolean;
   installHighlighterCss: () => boolean;
   installTrustedTypesPolicy: () => string;
-  /** Replaces the Obsidian mark in the reader toolbar; returns how many it found (M1.5). */
-  sweepBranding: (doc: Document) => number;
   /** Marks the toolbar buttons whose milestones have not landed; returns how many (M1.6). */
   hideUnbuiltControls: (doc: Document) => number;
   /** Flips the highlighter and reports where it landed. Kotlin's route to the same local call the
@@ -139,48 +137,7 @@ function installTrustedTypesPolicy(): string {
   }
 }
 
-// --- M1.5: trademark sweep, and controls whose milestones have not landed ---
-
-/**
- * Upstream's toolbar carries the Obsidian gem on its "add to Obsidian" button. Upstream's MIT
- * grant excludes trademarks, icons and marketing (playbook §17), so the mark cannot ship in ours.
- *
- * Swapped in the DOM rather than patched in the submodule: the same discipline `installStyle`
- * follows, so §14's bump procedure stays a version change rather than a rebase. The mark is
- * matched on its own `viewBox`, which is what identifies it — the gem is the only 256-grid icon
- * in a toolbar of 24-grid lucide shapes.
- *
- * The path data still exists as a string inside the bundle, because it is upstream source we do
- * not patch. It is never rendered, and an unrendered string is not branding — what §17 governs is
- * what the app presents as.
- */
-const OBSIDIAN_MARK_VIEWBOX = '0 0 256 256';
-
-/** Neutral placeholder in the 24-grid stroke style of the toolbar's other icons. Final icon at G2. */
-const PLACEHOLDER_MARK =
-  '<path d="M12 5v14"/><path d="M5 12h14"/>';
-
-function sweepBranding(doc: Document): number {
-  // Read the attribute rather than selecting on it: attribute selectors against SVG elements are
-  // case-sensitive in the DOM and unsupported outright by linkedom, which is what the tests run
-  // on. Walking the toolbar is a handful of nodes and behaves identically in both.
-  const marks = [...doc.querySelectorAll('.obsidian-reader-nav svg')].filter(
-    (svg) => svg.getAttribute('viewBox') === OBSIDIAN_MARK_VIEWBOX,
-  );
-  marks.forEach((mark) => {
-    const replacement = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    replacement.setAttribute('width', '18');
-    replacement.setAttribute('height', '18');
-    replacement.setAttribute('viewBox', '0 0 24 24');
-    replacement.setAttribute('fill', 'none');
-    replacement.setAttribute('stroke', 'currentColor');
-    replacement.setAttribute('stroke-width', '1.75');
-    replacement.setAttribute('stroke-linecap', 'round');
-    replacement.innerHTML = PLACEHOLDER_MARK;
-    mark.replaceWith(replacement);
-  });
-  return marks.length;
-}
+// --- Controls whose milestones have not landed ---
 
 /**
  * Hides the toolbar controls whose milestones have not arrived (M1.6's "hidden or no-op" — hidden
@@ -318,7 +275,6 @@ async function toggle(cssMode: CssMode = 'inline'): Promise<boolean> {
   const active = await Reader.toggle(document);
   if (!wasActive) {
     document.documentElement.classList.toggle('obsidian-reader-active', active);
-    sweepBranding(document);
     hideUnbuiltControls(document);
     // Tell Kotlin the apply finished, and whether anything was actually built (M1.3). Upstream
     // only ever announces the *off* direction (`readerModeChanged`, isActive: false), and
@@ -358,7 +314,6 @@ if (!window.__clipper) {
     installReaderCss,
     installHighlighterCss,
     installTrustedTypesPolicy,
-    sweepBranding,
     hideUnbuiltControls,
     toggleHighlighter,
     highlighterActive,

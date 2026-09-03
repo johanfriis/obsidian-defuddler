@@ -70,5 +70,6 @@ Referenced as "screenshot 1/2/3" throughout the Build Playbook, and mapped to ow
   brief* in [Architecture & Rationale](<Android Web Clipper for Obsidian — Architecture & Rationale.md>).
   The share-target and reader-view items from that list survive as playbook M1.
 - **The licensing question** ("ensure the original web clipper's license allows replication, and that
-  ours is compatible") is resolved: everything is MIT, project licensed MIT, with a trademark carve-out
-  for Obsidian's gem icon and branding. See Build Playbook **§17** and **D15**.
+  ours is compatible") is resolved: everything is permissive, project licensed MIT. Every obligation
+  those licences carry — attribution, notices, Obsidian's trademark carve-out — is triggered by
+  distribution, and **D34** (2026-09-03) settled that there is none. See Build Playbook **§17**.

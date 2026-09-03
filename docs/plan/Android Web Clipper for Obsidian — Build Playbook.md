@@ -132,7 +132,7 @@ everything else was decided by Johan explicitly.
 | D12 | Sideload-only distribution *(default)* | Personal keystore; no Play Store steps anywhere in this playbook. |
 | D13 | ~~Bookmark-only fallback ships in M2~~ **DROPPED by Johan, 2026-09-01 (D33): "I don't care about M2.5, we can skip that entirely."** | The reasoning it rested on — graceful failure is part of a trustworthy save pipeline — is still right, and is still satisfied: when extraction yields nothing, upstream's sheet opens anyway with title, source and tags from page metadata and an empty body, and that saves. **A bookmark clip made by hand is still a bookmark clip**, so the feature was buying a shortcut, not the capability. Verify on the Instagram fixture, which is the case it was captured for. |
 | D14 | **The *shim* has tests; extraction quality does not.** The harness starts in M1 *(default)* | Originally "every submodule bump is guarded from the beginning". **Narrowed by Johan, 2026-09-01, at the D31 review:** `extraction.test.ts` pinned word counts, exact author strings and content snapshots — assertions about defuddle's *output quality*, which legitimately shifts per release and which Johan would notice anyway as a template property coming up empty. Pinning them makes bumps noisy without making them safer, and upstream is the better judge. What stays and grows more valuable under D31 is `bootstrap`/`bundle`/`bridge` — tests of **our** code: the bundle builds, the shim's storage/i18n/messaging answer correctly. Fixtures stay on disk as manual reference (Instagram's empty-*text* case is still why M2.5 exists). **Accepted consequence: a submodule bump can break upstream UI that nothing tests.** |
-| D15 | Project license MIT; `THIRD_PARTY_LICENSES` shipped in APK; no Obsidian trademarks in shipped branding | See §17. |
+| D15 | ~~Project license MIT; `THIRD_PARTY_LICENSES` shipped in APK; no Obsidian trademarks in shipped branding~~ **RETIRED by D34 (2026-09-03).** The repo stays MIT; the shipping obligations do not apply to an app that is never shipped | See §17. |
 | D16 | ~~No template editor in v1~~ **RETIRED by D31 (2026-09-01).** The app ships upstream's editor | The decision priced an editor as expensive work to build. It is not work at all: `settings.html` + `core/settings.ts` + `managers/template-ui.ts` + `utils/import-export.ts` are a complete editor with triggers, behaviour flags and JSON export/import, and M2.0 brought them up under our shim unmodified (§2). Desktop authoring still works and imports the same JSON; it is simply no longer the *only* way. |
 | D17 | Track the current stable toolchain (AGP/Gradle/JDK) rather than pinning to an older one or shimming | Standard tools at their sanctioned versions beat local workarounds; migrations are cheapest taken early. Toolchain versions live in `android/gradle/libs.versions.toml`, `android/gradle/wrapper`, `android/gradle/gradle-daemon-jvm.properties` and `mise.toml`. |
 | D18 | `SafWriter` (M2.4) and SAF hardening (M6.3) deferred, not deleted | Follows from D2: with no SAF save path there is nothing to write or harden. **The original justification (SAF bypasses Obsidian's triggers) turned out not to separate the two options — A5 showed `obsidian://` bypasses them too.** What the deferral now rests on is cost: `SafWriter` reimplements append/overwrite that Obsidian gives us free, plus tree-URI permission plumbing to build and harden. Two accepted trades: (1) `obsidian://` always foregrounds Obsidian (A4) — SAF would have allowed a true background save; (2) the URI contract is now a single point of failure — acceptable because notes are plain markdown in a folder Johan controls, so recovery is manual but never data-loss. |
@@ -151,6 +151,7 @@ everything else was decided by Johan explicitly.
 | D31 | **The app hosts upstream's extension; it does not reimplement its UI.** Two WebViews — the page WebView as today, plus a UI WebView on a `WebViewAssetLoader` origin serving upstream's own `popup.html` / `side-panel.html` / `settings.html`. The shim becomes the extension runtime | Johan's call, 2026-09-01, at the M2 planning review: *"if I could have the Obsidian Web Clipper in an android app, then I would be happy"*. §8 previously had M2.2 building a Compose `ModalBottomSheet` and M2.3 porting the save recipe by hand — **both reimplement code the submodule already contains.** `src/popup.html` + `src/core/popup.ts` *is* screenshot 3, element for element; `src/utils/obsidian-note-creator.ts` *is* §3's save recipe, which §3 already told us to mirror rather than improvise. **M2.0's spike (§2) brought the clip sheet, the save path, the settings page and the template editor up against our shim with zero changes to upstream source.** The mapping is direct: content script → page WebView (already how M1 works); popup/settings → UI WebView on our origin (the `chrome-extension://` analogue); `browser.storage`/`i18n`/`runtime` → the shim (already built); `browser.tabs` → trivial, there is exactly one tab and Kotlin owns it; `obsidian://` → `shouldOverrideUrlLoading` → `startActivity`. **Upstream's `background.ts` is NOT ported** — 1109 lines of browser-chrome management (context menus, tab lifecycle, `webRequest`, `action.setPopup`) that a single-tab app has no use for. We write a small responder for the ~15 actions the clip and settings paths actually send. That is B1's one-alias shim move, one layer up. Kotlin shrinks to: share intent, two WebViews, message routing, intent dispatch, first-run vault name. **Retires D16 and D27's tap-only rule; narrows D14 and D20; weakens D8. Accepted cost, eyes open: a submodule bump can break upstream UI nothing tests (D14), and we inherit upstream features wholesale rather than picking them.** |
 | D32 | **Reader stays in the page WebView.** It is not moved to the UI origin, and there is no second reader implementation | Johan's call, 2026-09-01: *"if possible, don't fork the reader"*. Upstream's `reader-page` / `core/reader-view.ts` entry would render the reader as its own document — the architecture D26 describes as the dormant Layer B rework, which would make re-extract buildable. Tempting, but the injected reader works, G1 passed on it, and moving it doubles D31's blast radius. **One implementation, where it is.** Revisit only after the UI WebView lands; if it lands well, D26's rework becomes cheap rather than speculative. |
 | D33 | **Chrome is two mini FABs — `Reader` and `Clip`, bottom right. No shell bar, no `Reload`, and no setup screen** | Johan's call, 2026-09-01, once D31 made upstream's UI the control surface. Three deletions and one keep. **`Reload` retired:** toggling the reader off already ends in `window.location.reload()`, so D26's recovery is "toggle off, wait, toggle on", and a page that fails outright still gets the error pane's Retry — what remained was a permanent button for "the raw page rendered wrong". **Pull-to-refresh was considered and rejected**: `SwipeRefreshLayout` around a WebView fights the page's own scroll and any site with its own gesture, and a recovery action should not be gesture-dependent. **M2.4's setup screen deleted:** `saveToObsidian` omits `&vault=` when no vault is set, so Obsidian saves to whichever vault is open — for a one-vault user that is *more* reliable than typing a name that has to match exactly, and templates carry their own vault and path besides. Settings live on upstream's own page, reachable from the clip sheet's gear and from the launcher screen (so a page that will not load cannot lock you out). **Both FABs kept at one tap** because both actions are frequent: every shared link is read, many are clipped. Folding `Reader` into the sheet would have put the *more* common action two taps and a modal behind the less common one — D4 ordered the reader first for that reason. |
+| D34 | **Personal use only: no branding work, no shipped licence notices.** The Obsidian mark is left where upstream put it, and `THIRD_PARTY_LICENSES` is not assembled | Johan's call, 2026-09-03: *"this app will only be for personal use (for the longest time at least)… I will not be sharing it with anyone."* Both obligations that D15 encoded — MIT attribution and upstream's trademark carve-out — are triggered by **distribution**, and there is none: one sideloaded APK on one phone, from a private repo. Retires D15 and G2's branding constraint, deletes M1.5's sweep, and empties §17. **The one condition that reverses this: handing the APK to anyone else.** At that point the sweep is recoverable at `c2a1e6f` and §17's notice table is in that same commit's history. |
 
 ## 2. Gate outcomes
 
@@ -160,7 +161,7 @@ Filled in as gates are passed. Empty = not reached.
 |---|---|---|---|
 | G0 | Does `obsidian://new` + `&clipboard` work on the Find N6? What is the reliable `content=` size limit? Is the vendored reader viable in a WebView? | **CLOSED — passed.** Spikes A and B both pass; the reader renders on all four test pages. Both trade-offs signed off by Johan → D20 (inline CSS) and D21 (Trusted Types). M0 ends here per D22. **Next: M1.** | A: 2026-08-31, B: 2026-08-31, closed: 2026-08-31 |
 | G1 | Is reader parity good enough to build on (vs. reworking Layer B)? | **CLOSED — passed.** Johan read real articles on the Find N6 and ruled the reader good enough to build on. Layer B stays as designed; D26's rework path (render into a separate document) stays dormant unless real reading shows extraction timing recurring. Three M1 acceptance boxes were still unticked at the gate (the three apps' own share sheets, the transcript on device since B3, cookies against a real login) — carried into M2's device work as background checks, Johan's call. **Next: M2.** | 2026-09-01 |
-| G2 | v1 ship review: app name + icon chosen; post-v1 order reconfirmed | — | — |
+| G2 | v1 ship review: app name + icon chosen; post-v1 order reconfirmed | — *(branding constraint dropped by D34 — the name and icon are now only a matter of taste)* | — |
 
 ### G0 / Spike A findings — 2026-08-31, Find N6 (CPH2765), Android 16 / API 36, vault `Sanctum`
 
@@ -263,8 +264,8 @@ if the detail is ever needed). It mirrored its log to logcat (`just log`, or
 ellipsizes.
 
 - **B3 pass. The reader renders in a bare WebView**, on stephango.com, github.com, apnews.com and a
-  YouTube watch page. Screenshot 1's toolbar is present and correct (TOC, pen, paperclip, Aa, and the
-  Obsidian gem that M1.5 must replace). Layer B proceeds as designed.
+  YouTube watch page. Screenshot 1's toolbar is present and correct (TOC, pen, paperclip, Aa and the
+  Obsidian gem, which stays as upstream drew it — D34). Layer B proceeds as designed.
 - **`evaluateJavascript` handles the ~2 MB bundle comfortably** — 42–222 ms per injection across all
   pages, no failures. **The injection question is closed: no `WebViewAssetLoader`, no chunking, no
   externals.** Reading the asset off disk is ~20–40 ms, done once. This also means the *JavaScript* is
@@ -544,7 +545,6 @@ jsbridge/
   vendor/obsidian-clipper/            git submodule @ pin
 docs/plan/                            these documents
 LICENSE, .gitignore, .gitattributes
-THIRD_PARTY_LICENSES                  (planned — assembled at v1 release, §10/§17)
 ```
 
 ---
@@ -630,8 +630,8 @@ just inspect                  # prints the chrome://inspect steps for WebView de
   In `jsbridge/`: `npm init -y`, `npm i -D esbuild sass vitest linkedom typescript` and
   `npm i defuddle@0.19.3 dayjs`.
 - **P0.6 — App scaffold.** New Android Studio project: "Empty Activity" (Compose), Kotlin DSL, package
-  `it.slowmail.obsidianreader` (final name at G2 — package id is internal and can stay regardless of
-  branding), `minSdk 31`, `targetSdk 36`. Commit the wrapper (`gradlew` + `gradlew.bat`).
+  `it.slowmail.obsidianreader` (final name at G2; the package id is internal and can stay either
+  way), `minSdk 31`, `targetSdk 36`. Commit the wrapper (`gradlew` + `gradlew.bat`).
 
 ### Acceptance
 
@@ -792,31 +792,23 @@ hand-written reader.
     `npm test` left a debug bundle in the tree. All 32 JS tests pass against the minified build,
     which is also the evidence that minification does not disturb the `__clipper` surface.
 
-- **M1.5 — Trademark sweep. DONE (2026-09-01), verified on device.** `sweepBranding` replaces the gem
-  after `Reader.apply` builds the toolbar — a post-hoc DOM swap, not a submodule patch, so §14's bump
-  procedure stays a version change (the same discipline `installStyle` follows). The mark is matched
-  by reading each toolbar `svg`'s `viewBox` for `0 0 256 256` — the gem is the only 256-grid icon
-  among 24-grid lucide shapes — rather than by an attribute selector, which is case-sensitive against
-  SVG and unsupported outright by linkedom.
-  - **Sweep of the rest of the tree: the gem is the only mark that reaches the bundle.** It appears in
-    `utils/reader.ts`, `settings.html` and `highlights.html`; the latter two are extension pages we do
-    not bundle, and `src/icons/*.png` contribute 0 bytes. The gem's path data still exists as a string
-    inside the bundle because it is upstream source we do not patch — it is never rendered, and an
-    unrendered string is not branding.
-  - **Unbuilt controls are hidden, not no-op'd** (M1.6's open choice): a visible button that does
-    nothing is exactly what the governing principle warns against. `hideUnbuiltControls` marks buttons via the
-    aria-labels upstream gives them, read back through the same `getMessage` that rendered them, so
-    it tracks upstream's strings rather than hardcoding English. **Its list is empty as of M2.7** —
-    `addToObsidian` left at M2.6 and the pen at M2.7, as each turned out to work. The `Aa` panel's
-    "Settings" row still goes by CSS (it opens the *extension's* options page). **The toolbar was
-    TOC + `Aa` in M1; it is the full toolbar now.**
+- **M1.5 — ~~Trademark sweep~~ DELETED (D34, 2026-09-03).** `sweepBranding` replaced the Obsidian
+  gem in the reader toolbar with a neutral placeholder; it is gone, and the toolbar carries upstream's
+  own icon again. The app is one sideloaded APK on Johan's phone, so the carve-out it served has
+  nothing to bite on. Recoverable at `c2a1e6f` if the app is ever handed to anyone.
 - **M1.6 — Injection and the reader toggle. DONE (2026-09-01).** On `onPageFinished`: inject the
   bundle (idempotent — upstream already guards with `obsidianReaderInitialized`; B3 saw github fire
   `onPageFinished` four times for one navigation and the guard held). **Do not toggle automatically
   (D24).** The page renders normally and the shell offers a "Reader" toggle; `__clipper.toggle()`
   runs when Johan taps. A too-early tap is recovered by toggling the reader **off** (which reloads — D33 retired the separate Reload) → wait → tap
-  **Reader** again; re-extract cannot exist, and D26 holds the receipts. Unbuilt toolbar controls
-  are hidden, not no-op'd — settled and implemented at M1.5.
+  **Reader** again; re-extract cannot exist, and D26 holds the receipts.
+  - **Unbuilt controls are hidden, not no-op'd** (this milestone's open choice): a visible button
+    that does nothing is exactly what the governing principle warns against. `hideUnbuiltControls`
+    marks buttons via the aria-labels upstream gives them, read back through the same `getMessage`
+    that rendered them, so it tracks upstream's strings rather than hardcoding English. **Its list
+    is empty as of M2.7** — `addToObsidian` left at M2.6 and the pen at M2.7, as each turned out to
+    work. The `Aa` panel's "Settings" row still goes by CSS (it opens the *extension's* options
+    page). **The toolbar was TOC + `Aa` in M1; it is the full toolbar now.**
 
   **The settle problem does not go away, and a tap does not solve it.** B3 measured the YouTube
   transcript absent at a 6 s settle and present at 15 s. Realistic tap latency — see the page, find
@@ -901,8 +893,8 @@ is merely believed to work.
   Johan has shared from a browser. Not yet tried from all three apps' own share sheets — ColorOS
   ordering means the app may need pinning in the sheet first (§14).*
 - [x] Reader matches screenshot 1: typography, TOC button works, toolbar present (unbuilt buttons
-  handled per M1.6), no Obsidian gem icon. *Verified on device; the toolbar is TOC + `Aa`, the rest
-  hidden until their milestones (M1.5).*
+  handled per M1.6). *Verified on device; the toolbar was TOC + `Aa` then, the rest hidden until
+  their milestones — it is the full toolbar now. The gem stays as upstream drew it (D34).*
 - [ ] YouTube watch page shows the transcript in reader when available (upstream `reader-transcript.ts`).
   *Guarded by a fixture (M1.7) but **not re-verified on device** since M0's B3 run.*
 - [ ] Cookies persist across app relaunches (visit a login-walled site, relaunch, still signed in).
@@ -1132,10 +1124,9 @@ real page. **There is no template store, no importer, no management UI and no ed
 
 ## 10. v1 release checklist — includes GATE G2
 
-- [ ] **GATE G2 (Johan):** choose app name + icon — must not read as an official Obsidian product and
-  must not use Obsidian's gem or wordmark (§17); reconfirm post-v1 order (D5).
-- [ ] Swap M1.5's placeholder for the real icon; set `applicationId`, app label, versionName `1.0`.
-- [ ] `THIRD_PARTY_LICENSES` assembled per §17 and shipped in the APK (viewable from settings).
+- [ ] **GATE G2 (Johan):** choose app name + icon — taste only, no branding constraint (D34);
+  reconfirm post-v1 order (D5).
+- [ ] Set the real icon, `applicationId`, app label, versionName `1.0`.
 - [ ] Release keystore generated and backed up; signing config reads credentials from
   `local.properties`/env so it works identically on macOS and Windows.
 - [ ] R8/proguard: keep rules for `@JavascriptInterface` members; release build tested on device —
@@ -1240,7 +1231,7 @@ contract shows up here as a `[bg] UNHANDLED action:` warning, so watch the log d
 
 Two contracts a bump can break silently, both guarded by tests rather than by reading:
 `test/bridge.test.ts` is the executable spec for `AndroidBridge.kt`, and `bundle.test.ts` asserts the
-inline-CSS ids upstream guards on (D20) and the branding sweep's anchor (M1.5).
+inline-CSS ids upstream guards on (D20).
 
 **WebView debugging.** `setWebContentsDebuggingEnabled(true)` (debug builds) + `chrome://inspect` on
 the dev machine gives full DevTools against the phone — the primary tool for all Layer B work.
@@ -1289,7 +1280,7 @@ check ColorOS's "recommended sharing" settings first.
 | Highlighter pen button (1) | **Working since M2.7** — the reader toolbar's pen. The popup's pen is the wrong surface here (the sheet covers the page) and is left alone rather than built on |
 | Copy/save popup button (1) | Renders M1; both actions are upstream's under D31 — M2 only backs `copyToClipboard` with Kotlin's ClipboardManager (§2's silent-fallback finding) |
 | Aa reader-style button (1) + the style sheet it opens (2) | **Done at M1.3** — both are upstream's own panel, persisted through the bridge. Nothing left in §12's M5 but the M5.2 theme check |
-| Clipper button — gem replaced (1) → clip sheet (3) | M2 — opens upstream's `popup.html` (D31) |
+| Clipper button (1) → clip sheet (3) | M2 — opens upstream's `popup.html` (D31) |
 | Template dropdown w/ auto-select (3) | **Upstream's**, working since M2.0; M3 verifies on device |
 | Properties editor, body editor, note name (3) | **Upstream's**, working since M2.0 (D31) |
 | Vault selector (3) | **Upstream's** — `settings.html` has a Vaults field; D9 still means one vault |
@@ -1297,22 +1288,16 @@ check ColorOS's "recommended sharing" settings first.
 | "Add to Obsidian" (3) | **Upstream's**; Kotlin only catches the `obsidian://` intent (M2.3) |
 | Settings page + template editor (no screenshot) | **Upstream's** `settings.html` — retires D16 |
 
-## 17. Licensing & branding
+## 17. Licensing
 
-Ours: **MIT** (`LICENSE` at repo root). Shipped third-party notices (`THIRD_PARTY_LICENSES`):
+Ours: **MIT** (`LICENSE` at repo root). Upstream (`obsidian-clipper`) and every bundled dependency
+are MIT, Apache-2.0/MPL-2.0, BSD-3-Clause or ISC — all permissive, and all of their obligations
+(attribution, notice files, upstream's trademark carve-out) are triggered by **distribution**.
 
-| Component | License | Shipped? |
-|---|---|---|
-| obsidian-clipper (vendored reader/highlighter + api) | MIT | Yes |
-| defuddle | MIT | Yes |
-| dayjs, lz-string | MIT | Yes |
-| dompurify | Apache-2.0 OR MPL-2.0 → use Apache-2.0 notice | Yes |
-| highlight.js | BSD-3-Clause | Yes |
-| lucide | ISC | Yes |
-| webextension-polyfill | MPL-2.0 | **No — replaced by our shim; keep it that way** |
-| linkedom, vitest, esbuild, sass | ISC/MIT | Dev-only, not shipped |
+**D34, 2026-09-03: there is no distribution.** One sideloaded APK, one phone, a private repo. So no
+`THIRD_PARTY_LICENSES` is assembled, no notices ship, and the Obsidian mark stays where upstream put
+it. `webextension-polyfill` (MPL-2.0) is still not shipped — our shim replaces it — and that should
+stay true regardless, because it is the only weak-copyleft component anywhere near the bundle.
 
-**Trademark carve-out** (upstream README excludes trademarks/icons/marketing from the MIT grant): the
-Obsidian gem icon is swept out of vendored assets in M1.5; the shipped app name, icon, and store-free
-presence must not present as an official Obsidian product (G2 decision). Naming the *repo*
-`obsidian-reader` is fine; the shipped label is what matters.
+**If the APK is ever handed to anyone**, all of it returns: the notice table and the trademark sweep
+are both readable at `c2a1e6f`.

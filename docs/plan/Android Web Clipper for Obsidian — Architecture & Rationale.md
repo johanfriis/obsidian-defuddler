@@ -91,7 +91,7 @@ Deliberately not duplicated here — the Build Playbook is authoritative for all
 | Save pipeline, fallback behaviour, why no SAF | Playbook M2.3, **D2**, **D18**, and the G0 findings in §2 |
 | Repository layout | Playbook §4 |
 | Milestones and acceptance criteria | Playbook §5–§13 |
-| Licensing obligations and trademark carve-out | Playbook §17, **D15** |
+| Licensing, and why personal use ends the obligations | Playbook §17, **D34** |
 | Dev loop (`just`), toolchain, device setup | Playbook §5 |
 | What CSP / Trusted Types actually did on device, with numbers | Playbook §2, G0 Spike B findings |
 | Verification commands, WebView debugging, submodule bumps | Playbook §14 |
