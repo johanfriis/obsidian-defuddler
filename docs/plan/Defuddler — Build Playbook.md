@@ -66,7 +66,7 @@ nothing still opens the template picker).
 |---|---|---|
 | **P1** | **One source: fetch the URL with `requestUrl()`. No webview, no iframe, on any platform.** | The premise that mobile needs a rendered DOM does not survive the evidence already in this repo. `jsbridge/test/fixtures/` are `curl` captures — server bytes, no JavaScript ever executed — and `extraction.test.ts` passes against them: stephango 13,584 chars with title/author/1400+ words, github 6,328, apnews 3,901, youtube 2,780 **including the full transcript**, instagram nothing. Four of five, and the transcript survives because Defuddle's `YoutubeExtractor` reads inline player JSON rather than the rendered page. The rendered DOM buys exactly one measured thing: github's shadow DOM. That is not worth a second code path in v1. Reversible and *additive* — see P2's note and §13. |
 | **P2** | **Clipping happens inside Obsidian; notes are written with the vault API.** | This is the whole reason to pivot. It retires `D2`, `D18` and `D36` outright: no `obsidian://new`, no clipboard as transport, no size ceiling, no foregrounding, and `G0/A5`'s finding that Templater's on-create trigger does not fire is simply no longer true of us. **Cost, recorded honestly:** `D2` credited the URI with implementing dedup/append/overwrite for free. That credit is now a debt — those behaviours are ours to write (M4). |
-| **P3** | **Upstream's `src/api.ts` is the engine. We consume it; we do not fork it, and we ship none of its UI.** | `api.ts` is upstream's own environment-agnostic entry point: `clip({html, url, template, documentParser})` plus `matchTemplate()`. It is the entire clip pipeline with no `browser.*` in its import graph (§3 lists the 70 files it does pull). This is what makes the pivot cheap, and it is the opposite of `D31`, which hosted upstream's *extension* — that decision bought a UI and paid for it with the polyfill shim, two WebViews, a message router and bundle injection. Here we buy only the engine and build our own small UI, because Obsidian already gives us modals, settings and a command palette. |
+| **P3** | **Upstream's engine is what we build on. We ship none of its UI. ~~We consume `api.ts`; we do not fork it~~ — narrowed by GATE G3 on 2026-09-04: its `clip()` wrapper is unusable in a browser and is reimplemented in `src/clip.ts` over the same helpers. The helpers, the template compiler, the filters and the frontmatter generator are still upstream's, untouched.** | `api.ts` is upstream's own environment-agnostic entry point: `clip({html, url, template, documentParser})` plus `matchTemplate()`. It is the entire clip pipeline with no `browser.*` in its import graph (§3 lists the 70 files it does pull). This is what makes the pivot cheap, and it is the opposite of `D31`, which hosted upstream's *extension* — that decision bought a UI and paid for it with the polyfill shim, two WebViews, a message router and bundle injection. Here we buy only the engine and build our own small UI, because Obsidian already gives us modals, settings and a command palette. |
 | **P4** | **Templates are markdown files in the vault, in a configurable folder. `matchTemplate()` preselects; the human confirms.** | In-vault means editable and syncable anywhere, with no separate store to keep in step. Preselect-don't-apply follows the governing principle, and matches `M3.3` in the old playbook. The file format is settled in **GATE G1** — markdown, with the note's frontmatter in a fenced block and its types taken from the vault. |
 | **P5** | **Settings live in Obsidian's settings tab, declared with `getSettingDefinitions()`. No `display()`. All persisted state sits inside `plugin.settings`.** | **Corrected in Phase 0, 2026-09-03.** This decision first read "built with `display()`", on the belief that Obsidian here was 1.8.10 and that the declarative API did not exist yet. Both halves were wrong: the version came from a stale `Info.plist`, and the machine is on 1.14.0. With `minAppVersion` at 1.13.0 the linter's rule is to implement the definitions and *delete* `display()`, since a non-empty definition list bypasses it anyway. The single-blob rule is unchanged and still matters, because Obsidian's auto-persist clobbers sibling keys written with `saveData()`. |
 | **P6** | **Distribution is BRAT only. No community-plugin submission.** | Personal tool, same call as `D34`. Consequence: the community scanner's Scorecard is *guidance*, not a gate. We follow its rules where they are cheap and right (no `fetch()`, sentence case, `registerDomEvent`, no `!important`) and skip the submission ceremony. If that ever changes, the name and the ESLint pass are the two things to revisit. |
@@ -130,35 +130,38 @@ Two consequences, both acted on:
    fetch. `requestUrl` is exactly that and works on mobile. `src/fetch.ts` implements it and the
    proxied-browser row above proves the mechanism. Wiring it is blocked on **GATE G3**.
 
-### GATE G3 — how to give Defuddle its options — OPEN
+### GATE G3 — how to give Defuddle its options — CLOSED (2026-09-04)
 
-Found by S1 and it must close before M1. Upstream's `clip()` builds Defuddle itself with
-`new DefuddleClass(documentElement, { url })` and `ClipOptions` has no passthrough, so nothing we
-own can reach `DefuddleOptions`. Verified against the pinned commit, which is upstream's tip.
+**Johan chose Option A, and explicitly ruled out the upstream PR.** `src/clip.ts` now reimplements
+the wiring of upstream's `clip()`, constructing Defuddle itself. Everything else stays upstream's and
+is imported, not rewritten: `buildVariables`, `compileTemplate`, `applyFilters`, `formatPropertyValue`,
+`generateFrontmatter`, `sanitizeFileName`, and `api.ts`'s own two resolver factories. What is forked
+is about forty lines of wiring.
 
-This is not only about the fetch. `DefuddleOptions` also carries `language`, `includeReplies`,
-`removeImages` and `removeSmallImages` — all of them plausible plugin settings, all of them
-currently hardcoded by upstream's wrapper. Whatever closes this gate closes it for those too.
+While implementing it, a **third reason** turned up that outranks the two the gate was opened for.
+Upstream's `clip()` hands Defuddle `doc.documentElement` where a `Document` is wanted. With a real
+`DOMParser` that is a plain `HTMLHtmlElement`, and Defuddle returns nothing at all: **0 chars against
+13,584 on the stephango fixture, and a note called `Untitled`.** It works for upstream's own CLI only
+because linkedom's `documentElement` is document-like. So `api.ts`'s `clip()` was never usable here,
+and the two original reasons — the fetch and `parseAsync` — turned out to be the smaller half of the
+case.
 
-- **Option A — our own `clip()` (recommended).** Reimplement the ~50-line body of upstream's
-  `clip()` in `src/clip.ts`, constructing Defuddle with our options and calling upstream's exported
-  helpers for everything else: `createAsyncResolver` and `createSelectorProcessor` from `api.ts`,
-  and `buildVariables`, `generateFrontmatter`, `formatPropertyValue`, `compileTemplate`,
-  `applyFilters`, `sanitizeFileName` from its utils. The template engine, the filters, the variable
-  resolution and the frontmatter generation all stay upstream's. **Cost:** it narrows P3 — we would
-  depend on upstream's internal module paths, not only on `api.ts`. **Why that is tolerable:** those
-  modules are what `api.ts` itself is built from, they are already in our bundle, and a signature
-  change on a submodule bump fails the typecheck *in our file*, loudly.
-- **Option B — patch `globalThis.fetch` around the call.** Smallest diff, and wrong. Obsidian is a
-  shared process: for the seconds a clip takes, every other plugin's `fetch` would be rerouted
-  through `requestUrl` with different semantics.
-- **Option C — accept the loss.** Ship without the transcript and without those settings. Cheapest,
-  and it gives up something P1 cited as evidence.
-- **Also worth doing, under any option: send upstream a PR** adding a `defuddleOptions` passthrough
-  to `ClipOptions`. It is a few lines, it is obviously right for any non-extension consumer, and if
-  it lands Option A's fork disappears at the next bump.
+The three reasons, all measured:
 
-**Recommendation: A**, and the PR alongside it.
+| | Upstream's `clip()` | Ours |
+|---|---|---|
+| What Defuddle is given | `doc.documentElement` → 0 chars | the `Document` → 13,584 |
+| How it parses | `parse()`, sync → no transcript, 262 | `parseAsync()` → 2,780 |
+| `DefuddleOptions` | unreachable | passed through, `fetch` included |
+
+`test/clip.test.ts` guards all three, and its last test **pins upstream's defect**: if a submodule
+bump ever fixes it, that test fails and says so.
+
+**No PR to upstream**, by Johan's call. So the fork is permanent rather than a bridge, and a
+submodule bump is the moment to re-read `api.ts` against `src/clip.ts`.
+
+One thing the implementation turned up that M2 will need: the word-count variable is **`{{words}}`**,
+not `{{wordCount}}`. Defuddle's field is renamed on the way into the template context.
 
 ### S2 findings — the pages, three days on — 2026-09-04
 
@@ -179,17 +182,48 @@ is the question S2 was really asking.
 redirects the same way and whether the user-agent header we set actually reaches the server can only
 be answered from inside Obsidian, and the M0 spike command below answers it.
 
-### GATE G0 — the de-risking spike — OPEN
+### S3 findings — the phone — 2026-09-03, Android, and desktop for comparison
 
-Closes at the end of M0 (§6). S1 is done and passed; S2's offline half is done. What is left needs
-hardware: S2's `requestUrl` half and all of S3 need the phone, S4 needs Obsidian running the plugin.
+**S3 passes, and it also closes S2's remaining half.** Johan ran the spike command on both. Every
+case matches its S1 baseline on both platforms, `requestUrl` works everywhere, and the phone is
+barely slower than the desktop at the part we control.
 
-**The command `Defuddler: Run the M0 spike` does S2's remainder and all of S3 in one run.** It fetches
-the five source URLs through `requestUrl`, parses each with a real `DOMParser`, runs Defuddle twice
-per page — once with the renderer's global fetch and once with the `requestUrl`-backed one — probes
-the clipboard, records the platform, and writes the lot to a note in the vault. Every row carries its
-desktop baseline from S1, so a mismatch is visible without cross-referencing. Run it on the desktop
-first to confirm it reproduces S1, then on the phone. It is temporary and is deleted when G0 closes.
+| Case | Fetch (desktop → phone) | Parse (desktop → phone) | Result, both |
+|---|---|---|---|
+| stephango | 129 → 391 ms | 9 → 14 ms | 13,584 / 1,631 |
+| apnews | 172 → 472 ms | 61 → 111 ms | 3,901 / 619 |
+| github | 847 → 818 ms | 26 → 34 ms | 6,328 / 478 |
+| youtube | 1,101 → 1,622 ms | 774 → 846 ms | 2,780 / 506 |
+| instagram | 496 → 490 ms | 33 → 48 ms | 0 words |
+
+Five pages end to end took 5 s on the desktop and 6 s on the phone, at 834 KB of `main.js`. The
+worst single page is YouTube at about 2.5 s on the phone. **The bundle-size risk is closed.**
+
+**The fetch finding reproduced exactly where it matters.** On both platforms, the renderer's global
+fetch gives YouTube 262 chars and zero words, and the `requestUrl`-backed one gives 2,780 and 506.
+Every other case is identical under either fetch, so YouTube is the whole of what the CORS-free
+fetch buys — as S1 predicted.
+
+**Two things to note rather than act on.**
+
+- **The clipboard probe threw `There is no data on the clipboard`.** That is an empty clipboard, not
+  a refusal: the call reached the API and returned a clean error. It does not yet prove a *populated*
+  clipboard reads on Android, so **the one thing S3 still owes is a re-run with a URL actually
+  copied.** P8's prompt fallback ships either way; this only decides how often it is the visible
+  path.
+- **Instagram answered differently on the desktop**: 593,275 bytes and a title of `Popular on
+  Instagram` against the phone's 597,107 bytes and `Instagram`. Both extract zero words, which is the
+  only property that matters here (P10), but it is a reminder that a fingerprinting site does not
+  serve `requestUrl` the same page twice.
+
+### GATE G0 — the de-risking spike — nearly closed
+
+S1 passed, S2 passed on both halves, S3 passed. **S4 is the only spike left**, and it is the one that
+tests P2's central claim: that a note written with `vault.create()` fires Templater's on-create
+trigger, which `obsidian://new` measurably did not. It also has to settle how the six save behaviours
+resolve against the vault API, so that M4 is not a discovery exercise.
+
+The spike command stays until G0 closes, then it and `src/spike.ts` are deleted.
 
 ### GATE G1 — template file format — CLOSED (2026-09-03)
 
@@ -269,8 +303,10 @@ The checklist is §12.
 Everything here was read out of the pinned submodule on 2026-09-03. A session that doubts a line
 should re-read the file rather than trust this table.
 
-**`src/api.ts` — the engine.** Its own header: environment-agnostic, no Node or browser
-dependencies, the caller provides a `DocumentParser`. Exports:
+**`src/api.ts` — the engine, minus its wrapper.** Its own header claims to be environment-agnostic
+with the caller providing a `DocumentParser`. That is true of everything it exports *except*
+`clip()`, which GATE G3 measured as unusable in a browser and which `src/clip.ts` now replaces. We
+still use `createAsyncResolver`, `createSelectorProcessor` and its types. Exports:
 
 ```ts
 clip(options: ClipOptions): Promise<ClipResult>
