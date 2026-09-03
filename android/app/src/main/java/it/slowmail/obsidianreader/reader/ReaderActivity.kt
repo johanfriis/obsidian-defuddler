@@ -67,6 +67,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import it.slowmail.obsidianreader.BuildConfig
 import it.slowmail.obsidianreader.clipper.ClipSheet
 import it.slowmail.obsidianreader.clipper.MessageRouter
+import it.slowmail.obsidianreader.clipper.SettingsActivity
 import it.slowmail.obsidianreader.clipper.openExternally
 import it.slowmail.obsidianreader.R
 import it.slowmail.obsidianreader.ui.ClipperTheme
@@ -376,6 +377,9 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
                         enabled = webView != null && !toggleInFlight,
                         onToggleReader = ::toggleReader,
                         onClip = ::openClipSheet,
+                        onOpenSettings = {
+                            context.startActivity(SettingsActivity.intent(context))
+                        },
                         modifier = Modifier.matchParentSize(),
                     )
                 }
@@ -417,7 +421,8 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
  * for the clarity"* — so the tap count is the decision, not an oversight to optimise away later.
  *
  * **The main button is `Clip` once the menu is open**, in the same place the finger just tapped;
- * `Reader` pops out above it. Swapping the two is a matter of exchanging the two `onClick`s and
+ * `Reader` pops out above it, then `Settings` above that — ordered by how often each is wanted, so
+ * the rarest sits farthest from the thumb. Swapping the two is a matter of exchanging the two `onClick`s and
  * icons below, and nothing else depends on the order.
  *
  * `Reload` stays retired (D33): toggling the reader off already ends in `window.location.reload()`,
@@ -440,6 +445,7 @@ private fun ShellControls(
     enabled: Boolean,
     onToggleReader: () -> Unit,
     onClip: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Deliberately quicker than Material's defaults (Johan, 2026-09-03). The menu sits between the
@@ -477,6 +483,33 @@ private fun ShellControls(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn(animationSpec = motion) +
+                    scaleIn(animationSpec = motion, initialScale = 0.7f) +
+                    slideInVertically(animationSpec = slide) { it / 2 },
+                exit = fadeOut(animationSpec = motion) +
+                    scaleOut(animationSpec = motion, targetScale = 0.7f) +
+                    slideOutVertically(animationSpec = slide) { it / 2 },
+            ) {
+                SmallFloatingActionButton(
+                    // Settings is not gated on `enabled`: it is the one action that has nothing to
+                    // do with the page, and it is the door that must stay open when a page will not
+                    // load (the same reason SettingsActivity exists at all).
+                    onClick = {
+                        onExpandedChange(false)
+                        onOpenSettings()
+                    },
+                    shape = CircleShape,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_settings),
+                        contentDescription = stringResource(R.string.action_settings),
+                    )
+                }
+            }
+
             AnimatedVisibility(
                 visible = expanded,
                 enter = fadeIn(animationSpec = motion) +

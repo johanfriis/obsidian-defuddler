@@ -154,7 +154,7 @@ everything else was decided by Johan explicitly.
 | D32 | **Reader stays in the page WebView.** It is not moved to the UI origin, and there is no second reader implementation | Johan's call, 2026-09-01: *"if possible, don't fork the reader"*. Upstream's `reader-page` / `core/reader-view.ts` entry would render the reader as its own document — the architecture D26 describes as the dormant Layer B rework, which would make re-extract buildable. Tempting, but the injected reader works, G1 passed on it, and moving it doubles D31's blast radius. **One implementation, where it is.** Revisit only after the UI WebView lands; if it lands well, D26's rework becomes cheap rather than speculative. |
 | D33 | **Chrome is ~~two mini FABs~~ one FAB menu — `Reader` and `Clip`, bottom right (the FAB half superseded by D35, 2026-09-03; the rest stands). No shell bar, no `Reload`, and no setup screen** | Johan's call, 2026-09-01, once D31 made upstream's UI the control surface. Three deletions and one keep. **`Reload` retired:** toggling the reader off already ends in `window.location.reload()`, so D26's recovery is "toggle off, wait, toggle on", and a page that fails outright still gets the error pane's Retry — what remained was a permanent button for "the raw page rendered wrong". **Pull-to-refresh was considered and rejected**: `SwipeRefreshLayout` around a WebView fights the page's own scroll and any site with its own gesture, and a recovery action should not be gesture-dependent. **M2.4's setup screen deleted:** `saveToObsidian` omits `&vault=` when no vault is set, so Obsidian saves to whichever vault is open — for a one-vault user that is *more* reliable than typing a name that has to match exactly, and templates carry their own vault and path besides. Settings live on upstream's own page, reachable from the clip sheet's gear and from the launcher screen (so a page that will not load cannot lock you out). **Both FABs kept at one tap** because both actions are frequent: every shared link is read, many are clipped. Folding `Reader` into the sheet would have put the *more* common action two taps and a modal behind the less common one — D4 ordered the reader first for that reason. **That last clause is what D35 revisited**: a menu costs the same second tap, but spends it on a labelled choice rather than on a modal. |
 | D34 | **Personal use only: no branding work, no shipped licence notices.** The Obsidian mark is left where upstream put it, and `THIRD_PARTY_LICENSES` is not assembled | Johan's call, 2026-09-03: *"this app will only be for personal use (for the longest time at least)… I will not be sharing it with anyone."* Both obligations that D15 encoded — MIT attribution and upstream's trademark carve-out — are triggered by **distribution**, and there is none: one sideloaded APK on one phone, from a private repo. Retires D15 and G2's branding constraint, deletes M1.5's sweep, and empties §17. **The one condition that reverses this: handing the APK to anyone else.** At that point the sweep is recoverable at `c2a1e6f` and §17's notice table is in that same commit's history. |
-| D35 | **One FAB that opens a two-item menu, not two permanent FABs.** Tap to expand; the main button becomes `Clip` under the finger that just tapped, `Reader` pops out above it; tapping anywhere else, or Back, closes it | Johan's call, 2026-09-03: the pair *"takes up a lot of space"*. Collapsed chrome goes from 88dp to 56dp over the page. **The cost is a tap on every action** — the core flow is 4 taps where it was 2 — and it was accepted explicitly rather than overlooked: *"I do not mind the extra click for the clarity."* A context-aware single FAB (`Reader` when off, `Clip` when on) was offered as the cheaper alternative and **rejected in favour of the explicit menu**; recorded so it is not re-proposed. The one-tap clip from inside the reader is unaffected — the toolbar's own gem still opens the sheet (M2.6). |
+| D35 | **One FAB that opens a three-item menu, not two permanent FABs.** Tap to expand; the main button becomes `Clip` under the finger that just tapped, `Reader` pops out above it and `Settings` above that; tapping anywhere else, or Back, closes it | Johan's call, 2026-09-03: the pair *"takes up a lot of space"*. Collapsed chrome goes from 88dp to 56dp over the page. **The cost is a tap on every action** — the core flow is 4 taps where it was 2 — and it was accepted explicitly rather than overlooked: *"I do not mind the extra click for the clarity."* A context-aware single FAB (`Reader` when off, `Clip` when on) was offered as the cheaper alternative and **rejected in favour of the explicit menu**; recorded so it is not re-proposed. The one-tap clip from inside the reader is unaffected — the toolbar's own gem still opens the sheet (M2.6). **`Settings` was added the same day**, once the menu existed to hold it: it had been reachable only from the launcher screen or the clip sheet's gear, i.e. never from the page you are looking at. Items are ordered by how often each is wanted, so the rarest sits farthest from the thumb. |
 
 ## 2. Gate outcomes
 
@@ -523,7 +523,7 @@ android/                              Gradle project (Kotlin, Compose, minSdk 31
        are all upstream's. `ClipSheet.kt` survives as a *container* only — ~90 lines, no clipper
        logic. There is no settings/ package: D33 deleted the setup screen. SafWriter stays
        deferred — D18.)
-    res/drawable/ic_reader.xml, ic_clip.xml, ic_actions.xml  the FAB glyphs (D33, D35)
+    res/drawable/ic_reader.xml, ic_clip.xml, ic_actions.xml, ic_settings.xml   FAB glyphs (D33, D35)
     res/values/themes.xml, res/values-night/themes.xml       the day/night pair (D29 context)
     assets/clipper-bundle.js          injected into the PAGE WebView — committed, PROD build (D28)
     assets/ui/                        upstream's popup/side-panel/settings + style.css, served
@@ -1061,16 +1061,19 @@ The Kotlin here is plumbing; the clipper is upstream's.
     `ReaderActivity`, so that socket exists only once a reader has run in the process.
 
 - **M2.9 — The shell FAB became a menu. DONE (2026-09-03, D35), verified on the Find N6.**
-  `ShellControls` is now one `FloatingActionButton` over a full-window dismiss scrim, with `Reader`
-  as a `SmallFloatingActionButton` that animates out above it. The collapsed glyph is a neutral plus
+  `ShellControls` is now one `SmallFloatingActionButton` over a full-window dismiss scrim, with
+  `Reader` and `Settings` animating out above it. The collapsed glyph is a neutral plus
   (`ic_actions`) that rotates 45° as it opens; open, the main button *is* `Clip`.
-  - **Verified:** collapsed shows only `Actions`; tapping it reveals `Reader` and `Clip`; tapping the
-    page dismisses without reaching the page; `Reader` applies the reader and collapses; two taps in
-    the same spot open the populated clip sheet. Back closes the menu before it touches WebView
-    history.
+  - **Verified:** collapsed shows only `Actions`; tapping it reveals `Settings`, `Reader` and
+    `Clip`; tapping the page dismisses without reaching the page; `Reader` applies the reader and
+    collapses; two taps in the same spot open the populated clip sheet; `Settings` opens
+    `SettingsActivity`. Back closes the menu before it touches WebView history.
   - **The scrim swallows its dismiss tap on purpose.** "Tap anywhere that is not a button" is the
     close gesture, so passing that tap through to the page would fire a link as often as it closed
     the menu.
+  - **`Settings` is the one item not gated on `enabled`.** It has nothing to do with the page, and
+    it is the door that has to stay open when a page will not load — the same reason
+    `SettingsActivity` exists separately from the sheet's gear.
   - **Menu state is not saved across process death** — a menu the user cannot remember opening
     should not come back open.
   - **Shape, size and speed are Johan's, same day.** Both buttons are `SmallFloatingActionButton`
@@ -1297,7 +1300,7 @@ check ColorOS's "recommended sharing" settings first.
 
 | Element (screenshot) | Owner |
 |---|---|
-| Shell chrome — one FAB opening a `Reader`/`Clip` menu (D33, D35; no screenshot — post-dates them) | M1 shape, reshaped at M2.6 and M2.9. `Reload` retired |
+| Shell chrome — one FAB opening a `Settings`/`Reader`/`Clip` menu (D33, D35; no screenshot — post-dates them) | M1 shape, reshaped at M2.6 and M2.9. `Reload` retired |
 | Reader toolbar's Obsidian button → clip sheet (`toggleIframe` redirected) | M2.6 — the one-tap clip from inside the reader |
 | Reader typography, layout, TOC button (1) | M1 |
 | Highlighter pen button (1) | **Working since M2.7** — the reader toolbar's pen. The popup's pen is the wrong surface here (the sheet covers the page) and is left alone rather than built on |

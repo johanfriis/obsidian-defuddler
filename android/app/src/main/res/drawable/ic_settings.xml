@@ -1,0 +1,20 @@
+<!-- Lucide "settings-2" — the FAB menu's third item (D35). The gear proper is a 20-node path;
+     this reads the same at 24dp and diffs cleanly. -->
+<!-- strokeColor is a placeholder: Compose's Icon tints this from
+     LocalContentColor, so the value here never reaches the screen. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:strokeColor="#FF000000" android:strokeWidth="2"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M20,7h-9" />
+    <path android:strokeColor="#FF000000" android:strokeWidth="2"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M14,17H5" />
+    <path android:strokeColor="#FF000000" android:strokeWidth="2"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M17,14m-3,0a3,3 0 1,0 6,0a3,3 0 1,0 -6,0" />
+    <path android:strokeColor="#FF000000" android:strokeWidth="2"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M7,10m-3,0a3,3 0 1,0 6,0a3,3 0 1,0 -6,0" />
+</vector>
