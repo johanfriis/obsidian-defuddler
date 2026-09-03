@@ -90,10 +90,106 @@ nothing still opens the template picker).
 831 KB is the number M0's S3 judges mobile startup against. The Defuddle dedupe is spent — it was
 worth 320 KB of a 1,151 KB build — so there is no easy lever left if the phone objects.
 
+### S1 findings — fixture parity — 2026-09-04, desktop Chromium and Node
+
+**S1 passes. P1 holds.** All five fixtures extract identically through a real detached `DOMParser`
+and through the jsdom harness, once Defuddle is given a fetch that is not CORS-bound.
+
+| Fixture | jsdom snapshot | Real `DOMParser` | Parse |
+|---|---|---|---|
+| stephango | 13,584 chars | 13,584 | 93 ms |
+| apnews | 3,901 | 3,901 | 534 ms |
+| github | 6,328 | 6,328 | 171 ms |
+| youtube | 2,780 | 2,780 | 826 ms |
+| instagram | 22,221 | 22,221 | 343 ms |
+
+The layout question that motivated S1 turned out not to matter. The same bytes in an *attached*,
+laid-out document inside an iframe gave the identical result, so Defuddle's `getComputedStyle` calls
+cost nothing on a document with no layout. Those timings are the desktop baseline S3 compares the
+phone against.
+
+**What S1 actually found, which was something else entirely.** The YouTube transcript is not in the
+fixture's bytes and never was. Defuddle fetches it from YouTube's API during `parseAsync` — a POST
+to the innertube endpoint, then a GET for the caption track — and the inline-JSON parse that the
+fixture README credited throws a `SyntaxError`. Measured three ways, all agreeing:
+
+| Environment | chars | words | transcript |
+|---|---|---|---|
+| Node + jsdom, network on | 2,780 | 506 | yes |
+| Node + jsdom, `fetch` rejects | 262 | 0 | no |
+| Browser, renderer's global fetch | 262 | 0 | no |
+| Browser, fetch proxied CORS-free | 2,780 | 506 | yes |
+
+Two consequences, both acted on:
+
+1. **The harness was silently network-dependent**, which is the opposite of what a bump guard is
+   for. Every test now runs with a fetch that refuses, and the transcript has its own test that opts
+   back in and skips when offline. Only YouTube was affected — the other four were verified hermetic
+   rather than assumed to be.
+2. **The plugin must hand Defuddle a CORS-free fetch**, or it loses everything the site extractors
+   fetch. `requestUrl` is exactly that and works on mobile. `src/fetch.ts` implements it and the
+   proxied-browser row above proves the mechanism. Wiring it is blocked on **GATE G3**.
+
+### GATE G3 — how to give Defuddle its options — OPEN
+
+Found by S1 and it must close before M1. Upstream's `clip()` builds Defuddle itself with
+`new DefuddleClass(documentElement, { url })` and `ClipOptions` has no passthrough, so nothing we
+own can reach `DefuddleOptions`. Verified against the pinned commit, which is upstream's tip.
+
+This is not only about the fetch. `DefuddleOptions` also carries `language`, `includeReplies`,
+`removeImages` and `removeSmallImages` — all of them plausible plugin settings, all of them
+currently hardcoded by upstream's wrapper. Whatever closes this gate closes it for those too.
+
+- **Option A — our own `clip()` (recommended).** Reimplement the ~50-line body of upstream's
+  `clip()` in `src/clip.ts`, constructing Defuddle with our options and calling upstream's exported
+  helpers for everything else: `createAsyncResolver` and `createSelectorProcessor` from `api.ts`,
+  and `buildVariables`, `generateFrontmatter`, `formatPropertyValue`, `compileTemplate`,
+  `applyFilters`, `sanitizeFileName` from its utils. The template engine, the filters, the variable
+  resolution and the frontmatter generation all stay upstream's. **Cost:** it narrows P3 — we would
+  depend on upstream's internal module paths, not only on `api.ts`. **Why that is tolerable:** those
+  modules are what `api.ts` itself is built from, they are already in our bundle, and a signature
+  change on a submodule bump fails the typecheck *in our file*, loudly.
+- **Option B — patch `globalThis.fetch` around the call.** Smallest diff, and wrong. Obsidian is a
+  shared process: for the seconds a clip takes, every other plugin's `fetch` would be rerouted
+  through `requestUrl` with different semantics.
+- **Option C — accept the loss.** Ship without the transcript and without those settings. Cheapest,
+  and it gives up something P1 cited as evidence.
+- **Also worth doing, under any option: send upstream a PR** adding a `defuddleOptions` passthrough
+  to `ClipOptions`. It is a few lines, it is obviously right for any non-extension consumer, and if
+  it lands Option A's fork disappears at the next bump.
+
+**Recommendation: A**, and the PR alongside it.
+
+### S2 findings — the pages, three days on — 2026-09-04
+
+Re-fetched all five source URLs with the recorded user agent. Every one still answers 200, the bytes
+have drifted by a few KB either way, and **extraction is identical on all five** — same character
+counts, same word counts, same titles. The fixtures are still representative of the live web, which
+is the question S2 was really asking.
+
+| Fixture | Bytes then | Bytes now | Extraction |
+|---|---|---|---|
+| stephango | 24,500 | 24,500 | identical |
+| apnews | 864,468 | 868,101 | identical |
+| github | 310,265 | 310,691 | identical |
+| youtube | 797,931 | 754,726 | identical |
+| instagram | 608,802 | 597,562 | identical |
+
+**S2's other half is not done.** This was curl, not `requestUrl`. Whether `requestUrl` follows
+redirects the same way and whether the user-agent header we set actually reaches the server can only
+be answered from inside Obsidian, and the M0 spike command below answers it.
+
 ### GATE G0 — the de-risking spike — OPEN
 
-Closes at the end of M0 (§6). Passing means the pipeline is proven on both platforms and the numbers
-are written into §2. Failing on the fixture-parity spike (S1) is the one result that would reopen P1.
+Closes at the end of M0 (§6). S1 is done and passed; S2's offline half is done. What is left needs
+hardware: S2's `requestUrl` half and all of S3 need the phone, S4 needs Obsidian running the plugin.
+
+**The command `Defuddler: Run the M0 spike` does S2's remainder and all of S3 in one run.** It fetches
+the five source URLs through `requestUrl`, parses each with a real `DOMParser`, runs Defuddle twice
+per page — once with the renderer's global fetch and once with the `requestUrl`-backed one — probes
+the clipboard, records the platform, and writes the lot to a note in the vault. Every row carries its
+desktop baseline from S1, so a mismatch is visible without cross-referencing. Run it on the desktop
+first to confirm it reproduces S1, then on the phone. It is temporary and is deleted when G0 closes.
 
 ### GATE G1 — template file format — CLOSED (2026-09-03)
 

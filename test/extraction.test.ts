@@ -21,10 +21,16 @@ import Defuddle from 'defuddle';
  * constructs — github's shadow DOM is absent from these bytes entirely (0 `attachShadow`, 0
  * declarative `<template shadowroot>`), so B3's shadow-DOM finding cannot be reproduced here.
  *
- * The YouTube transcript, on the other hand, *is* in the server HTML: Defuddle's YoutubeExtractor
- * reads it out of the inline player JSON, not out of the rendered page. So this fixture guards the
- * transcript path properly. What it cannot reproduce is B3's *timing* finding — absent at a 6 s
- * settle, present at 15 s — which is a property of the live WebView, not of the bytes.
+ * **The YouTube transcript is NOT in these bytes** — corrected at M0/S1, 2026-09-04. This comment
+ * used to claim Defuddle read it out of the inline player JSON. It does not: the inline parse
+ * throws a SyntaxError, and the extractor gets the transcript by calling YouTube's API during
+ * `parseAsync`. Measured on this fixture: 2,780 chars with the network, 262 chars and zero words
+ * without it.
+ *
+ * That made this suite silently network-dependent, which is the opposite of what a bump guard is
+ * for. So every test below runs with a `fetch` that refuses, and the transcript gets its own test
+ * that opts back in and is skipped when there is no network. Four of the five fixtures are
+ * unaffected — measured, not assumed.
  */
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 
@@ -38,11 +44,26 @@ const SOURCE_URLS: Record<string, string> = {
   'instagram-wall.html': 'https://www.instagram.com/explore/',
 };
 
-async function extract(fixture: string) {
+/** Refuses every request Defuddle's extractors try to make, so a snapshot is a property of the
+ *  bytes on disk and of nothing else. */
+const noNetwork = () => Promise.reject(new Error('the extraction harness does not reach the network'));
+
+async function extract(fixture: string, options: Record<string, unknown> = {}) {
   const html = readFileSync(join(fixtures, fixture), 'utf8');
   document.documentElement.innerHTML = html;
-  return new Defuddle(document, { url: SOURCE_URLS[fixture] }).parseAsync();
+  return new Defuddle(document, {
+    url: SOURCE_URLS[fixture],
+    fetch: noNetwork,
+    ...options,
+  }).parseAsync();
 }
+
+/** Whether the one network-dependent test below can run at all. */
+const online = await fetch('https://www.youtube.com/generate_204', {
+  signal: AbortSignal.timeout(4000),
+})
+  .then(() => true)
+  .catch(() => false);
 
 /** Collapses whitespace so a snapshot tracks content, not upstream's formatting. Markup is kept:
  *  structural drift in what Defuddle emits is exactly what these snapshots are for. */
@@ -97,17 +118,25 @@ describe('extraction fixtures', () => {
     expect(shape(result.content)).toMatchSnapshot();
   });
 
-  it('youtube — title, author, embed and the full transcript', async () => {
+  it('youtube — title, author and the embed, with the transcript out of reach', async () => {
+    // What the bytes alone give: metadata and the embed, and no body at all. The embed is what
+    // makes a reader show a player rather than a dead thumbnail.
     const result = await extract('youtube-watch.html');
     expect(result.title).toContain('Never Gonna Give You Up');
     expect(result.author).toBe('Rick Astley');
-    // The transcript is the part M1's acceptance turns on, and it survives without a browser
-    // because YoutubeExtractor parses the inline player JSON rather than the rendered page.
+    expect(result.content).toContain('youtube.com/embed/dQw4w9WgXcQ');
+    expect(result.wordCount ?? 0).toBe(0);
+    expect(shape(result.content)).toMatchSnapshot();
+  });
+
+  // The only test here that leaves the machine, and the only one that can fail for a reason that
+  // is not ours. It guards the thing M0/S1 found: the transcript is reachable, but only through a
+  // fetch that is not CORS-bound — which inside Obsidian means requestUrl (src/fetch.ts, GATE G3).
+  it.runIf(online)('youtube — the transcript, which costs a network call', async () => {
+    const result = await extract('youtube-watch.html', { fetch: globalThis.fetch });
     expect(result.content).toContain('<h2>Transcript</h2>');
     expect(result.content).toContain('We\'re no strangers to love');
-    // The embed is what makes the reader show a player rather than a dead thumbnail.
-    expect(result.content).toContain('youtube.com/embed/dQw4w9WgXcQ');
-    expect(shape(result.content)).toMatchSnapshot();
+    expect(result.wordCount ?? 0).toBeGreaterThan(400);
   });
 
   it('instagram — extraction yields nothing, which is M2.5 bookmark territory', async () => {

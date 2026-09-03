@@ -21,9 +21,9 @@ exports[`extraction fixtures > stephango — the friendly baseline 1`] = `
 }
 `;
 
-exports[`extraction fixtures > youtube — title, author, embed and the full transcript 1`] = `
+exports[`extraction fixtures > youtube — title, author and the embed, with the transcript out of reach 1`] = `
 {
-  "chars": 2780,
+  "chars": 262,
   "head": "<iframe width="560" height="315" src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; cl",
 }
 `;

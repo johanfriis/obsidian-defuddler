@@ -18,14 +18,19 @@ export function clipHtml(args: {
 	template: Template;
 	propertyTypes?: Record<string, string>;
 }): Promise<ClipResult> {
+	// NOTE (M0/S1, GATE G3): upstream's clip() constructs Defuddle itself with `{ url }` and no
+	// seam for other options, so `obsidianFetch` cannot reach it from here. Until G3 is decided,
+	// Defuddle's site extractors run with the renderer's CORS-bound global fetch and silently lose
+	// whatever they fetch — the YouTube transcript is the measured case: 262 chars instead of
+	// 2,780. src/fetch.ts is written and proven; it is the wiring that is blocked.
 	return upstreamClip({
 		html: args.html,
 		url: args.url,
 		template: args.template,
 		propertyTypes: args.propertyTypes,
 		// A detached document. It has no layout, so Defuddle's getComputedStyle checks answer with
-		// defaults rather than real values — the thing M0's S1 spike measures against the jsdom
-		// snapshots before anything is built on top of it.
+		// defaults rather than real values. M0/S1 measured this against the jsdom snapshots on all
+		// five fixtures and found them identical, which is what P1 rests on.
 		documentParser: new DOMParser(),
 	});
 }

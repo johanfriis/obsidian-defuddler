@@ -39,11 +39,17 @@ than assumed:
   roots from script. B3's finding that `flatten-shadow-dom.js` is refused on github by `script-src`
   (§2) therefore **cannot be reproduced by any `curl` fixture** — it needs a hydrated capture from a
   real browser, and remains a device-only check.
-- **The YouTube transcript is here, but its *timing* is not.** Defuddle's `YoutubeExtractor` reads
-  the transcript out of the inline player JSON, not out of the rendered page, so it survives a
-  capture with no browser — which is why `youtube-watch.html` guards the transcript properly. What
-  it cannot show is B3's measurement that the transcript is absent at a 6 s settle and present at
-  15 s: that is a property of the live WebView, and it is what D26's Reload path exists for.
+- **The YouTube transcript is not here at all.** *Corrected at M0/S1, 2026-09-04; the previous text
+  claimed the opposite.* `YoutubeExtractor` does not read the transcript out of the inline player
+  JSON — that parse throws a `SyntaxError`. It fetches it from YouTube's API during `parseAsync`,
+  first by POSTing to the innertube endpoint and then by getting the caption track's URL. Measured
+  on this fixture: **2,780 chars with the network, 262 chars and zero words without it.**
+
+  Two consequences. The transcript is a property of YouTube's API on the day you run, not of these
+  bytes, so it cannot be snapshotted hermetically — hence the split in `extraction.test.ts`, where
+  every test refuses network and the transcript gets its own opt-in test. And inside a renderer
+  those requests are CORS-bound and fail silently, which is why the plugin has to hand Defuddle a
+  fetch backed by `requestUrl` (`src/fetch.ts`).
 
 A session tempted to "fix" the shadow-DOM gap by editing a fixture by hand should not: a
 hand-authored DOM would guard the fixture, not the site.
