@@ -1,2 +1,8 @@
-/* Plugin styles. Empty until there is UI to style — M1 onwards.
-   Everything here uses Obsidian's CSS variables and stays scoped to .defuddler-* containers. */
+/* Obsidian's own variables only — no hardcoded colours, sizes or spacing, so themes and snippets
+   keep working. Scoped to .defuddler-* so nothing here reaches the rest of the app. */
+
+.defuddler-url-input {
+	width: 100%;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-small);
+}

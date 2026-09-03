@@ -423,16 +423,19 @@ Target layout after Phase 0:
 
 ```
 main.ts                 plugin entry: commands, protocol handler, lifecycle
-src/clip.ts             the engine binding — built in Phase 0
-src/fetch.ts            requestUrl wrapper: user-agent, redirects, errors      (M1)
-src/templates.ts        load/watch the vault template folder, parse, validate  (M2)
-src/save.ts             the six behaviours                                     (M4)
+src/clip.ts             the engine: our clip() (G3), plus readableText
+src/pipeline.ts         URL in, note out — the seam every entry point uses
+src/fetch.ts            requestUrl: obsidianFetch for Defuddle, fetchPage for us
+src/templates.ts        the default template and trigger matching; the vault
+                        folder loader is M2
+src/save.ts             create; the other five behaviours are M4
 src/settings.ts         the settings definitions                               (M3)
-src/ui/                 URL prompt modal, template FuzzySuggestModal           (M1-M2)
+src/ui/url-prompt.ts    the URL prompt; the template picker is M2
 manifest.json  versions.json  styles.css
 esbuild.config.mjs      the build, and the two resolutions §3 depends on
 typecheck.mjs           tsc, minus the submodule's own diagnostics
-vitest.config.mts  test/extraction.test.ts  test/fixtures/  test/__snapshots__/
+vitest.config.mts       test/, including test/stubs/ — a hostile `obsidian` module
+                        and an in-memory vault, so the pipeline is testable
 vendor/obsidian-clipper the pinned submodule
 docs/plan/              this document
 docs/android/           the superseded Android playbook, until absorbed
@@ -548,8 +551,20 @@ whether S1's numbers hold P1 up.
 
 ## 7. M1 — Clip (v1)
 
-The command, end to end, against a single template hardcoded in the source. Templates come from the
-vault in M2; this milestone is about the pipeline.
+**Built 2026-09-04, and tested as far as a test can reach.** The command, end to end, against a
+single template hardcoded in the source. Templates come from the vault in M2; this milestone is
+about the pipeline.
+
+`test/pipeline.test.ts` runs the whole of it against an in-memory vault and a scripted `requestUrl`:
+a news URL becomes a note with frontmatter and a body, Instagram becomes a note with no body and
+says so, four HTTP statuses each produce their own sentence and write nothing, a non-URL never
+reaches the network, and a second clip of the same page refuses to clobber the first.
+
+**One bug the tests caught, worth naming because it was predicted.** The "no readable body" check
+first tested the body's *length*, which calls Instagram's 22 KB of base64 image and YouTube's
+48-character embed link successes. `D13` in the Android playbook recorded exactly this trap — the
+test must be on readable text, never on an empty content string. `readableText()` in `src/clip.ts`
+is that check, and it has its own tests.
 
 ### Tasks
 
@@ -565,14 +580,16 @@ vault in M2; this milestone is about the pipeline.
 
 ### Acceptance
 
-- [ ] A copied apnews URL becomes a note in the vault with frontmatter and a body, from one command.
-- [ ] The same on the phone.
-- [ ] An Instagram URL produces a note with frontmatter and no body, and no error (P10).
-- [ ] Offline, a 404 and a 403 each produce a distinct, accurate message and no note.
-- [ ] A non-URL on the clipboard opens the prompt rather than failing.
-- [ ] **A populated clipboard reads on Android.** Carried over from S3, which only ever saw an empty
-      one. Whatever the answer, P8's prompt fallback ships; this decides how often it is the visible
-      path.
+- [x] An apnews URL becomes a note with frontmatter and a body — proven in `test/pipeline.test.ts`.
+- [x] An Instagram URL produces a note with frontmatter and no body, and no error (P10).
+- [x] A 404, 403, 429 and 500 each produce a distinct, accurate message and no note.
+- [x] A non-URL, and a scheme we cannot fetch, are refused before anything reaches the network.
+- [x] A second clip of the same page refuses rather than overwriting.
+- [ ] **Needs the app:** the command, the clipboard prefill and the prompt, on the desktop.
+- [ ] **Needs the phone:** the same, and whether a *populated* clipboard reads on Android — carried
+      over from S3, which only ever saw an empty one. P8's prompt fallback ships either way; this
+      decides how often it is the visible path.
+- [ ] **Needs a real network:** offline behaviour, and the timeout.
 
 ## 8. M2 — Templates in the vault
 
@@ -593,9 +610,25 @@ vault in M2; this milestone is about the pipeline.
 6. `FuzzySuggestModal` listing templates by name, with `matchTemplate()`'s answer preselected and the
    reason it matched visible (P4, governing principle).
 7. A converter command for web-clipper JSON exports: read the export, write a G1 markdown template.
-   Upstream's field names are reused verbatim in the config frontmatter to keep this close to a rename.
+   Upstream's field names are reused verbatim in the config frontmatter to keep this close to a
+   rename. **Two facts about real exports, both measured against kepano's** (see below): they carry
+   a `schemaVersion` field the `Template` interface does not declare, which must be tolerated rather
+   than rejected; and they have **no `id`**, which the type requires, so the loader synthesises one
+   from the file name.
 8. A default template written to the folder on first run if it is empty, so the plugin is usable
    before any authoring.
+
+**The templates to test against are Johan's own source: [kepano/clipper-templates](https://github.com/kepano/clipper-templates)**, MIT. Two of them are already committed under
+`test/fixtures/templates/` and are exercised by `test/templates.test.ts` — the YouTube one for its
+`{{schema:…}}` variables and its `wikilink`, `date` and `slice` filters, the Wikipedia one for its
+**regex** trigger and its `selectorHtml`/`remove_html`/`markdown` chain.
+
+**A behaviour that will look like a bug and is not.** A `{{schema:…}}` variable resolves to nothing
+when the page's JSON-LD lacks that key, and the property lands empty with no warning. The YouTube
+fixture is a live example: its JSON-LD is a `VideoObject` carrying only `name`, `thumbnailUrl`,
+`uploadDate` and `comment`, so kepano's `{{schema:author|wikilink}}` produces an empty `author` even
+though Defuddle's own `{{author}}` knows perfectly well it is Rick Astley. The two are different
+sources. This is pinned in `test/templates.test.ts` so nobody goes hunting.
 
 ### Acceptance
 

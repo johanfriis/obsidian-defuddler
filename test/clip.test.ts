@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { clip as upstreamClip } from '../vendor/obsidian-clipper/src/api';
 import type { Template } from '../vendor/obsidian-clipper/src/api';
-import { clipHtml } from '../src/clip';
+import { clipHtml, readableText } from '../src/clip';
 
 /**
  * Guards GATE G3's fork.
@@ -135,5 +135,26 @@ describe('clipHtml', () => {
       defuddle: { fetch: noNetwork },
     });
     expect(ours.fullContent).toContain('take notes, write essays');
+  });
+});
+
+describe('readableText', () => {
+  // The three shapes a body comes in, taken from the fixtures rather than invented.
+  it('sees prose', () => {
+    expect(readableText('Texting friends, replying to a business email.').length).toBeGreaterThan(20);
+  });
+
+  it('sees nothing in a body that is one image, however long it is', () => {
+    // Instagram's fixture: 22 KB of body, all of it one base64 data URI.
+    expect(readableText(`![](data:image/png;base64,${'A'.repeat(22000)})`)).toBe('');
+  });
+
+  it('sees nothing in a bare embed link', () => {
+    // YouTube's, when the transcript is out of reach.
+    expect(readableText('![](https://www.youtube.com/watch?v=dQw4w9WgXcQ)')).toBe('');
+  });
+
+  it('keeps a link\'s text and drops its target', () => {
+    expect(readableText('I use [Obsidian](https://obsidian.md) to think')).toBe('I use Obsidian to think');
   });
 });

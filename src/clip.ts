@@ -134,3 +134,22 @@ export async function clipHtml(args: ClipArgs): Promise<ClipResult> {
 		variables,
 	};
 }
+
+/**
+ * The prose inside a clipped body, with images, links and markup taken out.
+ *
+ * The distinction matters more than it looks. Instagram's fixture yields 22 KB of body that is a
+ * single base64 image, and YouTube's without a transcript yields a 48-character bare embed link.
+ * Both are non-empty strings and neither is anything a reader would call content, so a check on the
+ * body's *length* calls them successes. The Android playbook recorded this exact trap at D13: the
+ * test has to be on readable text, never on an empty content string.
+ */
+export function readableText(markdown: string): string {
+	return markdown
+		.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')  // images, including data: URIs
+		.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // links keep their text, lose their target
+		.replace(/<[^>]+>/g, ' ')                  // any surviving markup
+		.replace(/[#>*_`~\-|]/g, ' ')              // markdown punctuation on its own is not prose
+		.replace(/\s+/g, ' ')
+		.trim();
+}

@@ -1,19 +1,37 @@
 import { Plugin } from 'obsidian';
-import { clipHtml } from './src/clip';
+import { clipUrlToVault } from './src/pipeline';
+import { DEFAULT_TEMPLATE, pickTemplate } from './src/templates';
+import { UrlPrompt } from './src/ui/url-prompt';
 
-/**
- * Phase 0 skeleton. It loads, it unloads, and it exposes the engine binding — nothing more. The
- * clip command, the template loader, the settings tab and the protocol handler arrive in M1–M5.
- * See docs/plan for the playbook.
- */
 export default class DefuddlerPlugin extends Plugin {
-	/**
-	 * The clip engine. M1 hangs the command off this; Phase 0 holds it so the build measures the
-	 * real bundle rather than an empty one.
-	 */
-	readonly clip = clipHtml;
-
 	async onload(): Promise<void> {
-		// Empty until M1. The M0 spike command lived here and was deleted when GATE G0 closed.
+		this.addCommand({
+			id: 'clip-from-clipboard',
+			name: 'Clip from clipboard',
+			callback: () => {
+				void this.promptAndClip();
+			},
+		});
+	}
+
+	/**
+	 * Reads the clipboard, then asks. P8: the clipboard is a prefill and never a requirement, so a
+	 * read that throws — which is the shape of it on iOS, and the shape of an empty clipboard on
+	 * Android — opens the same prompt with an empty field rather than aborting.
+	 */
+	private async promptAndClip(): Promise<void> {
+		let prefill = '';
+		try {
+			const text = (await navigator.clipboard.readText()).trim();
+			if (/^https?:\/\//i.test(text)) prefill = text;
+		} catch {
+			// Nothing to say. An unreadable clipboard is indistinguishable from an empty one here,
+			// and both mean the same thing: the human types the URL.
+		}
+
+		new UrlPrompt(this.app, prefill, (url) => {
+			// M2 replaces the single template with the vault's, and this call with a picker.
+			void clipUrlToVault(this.app, url, pickTemplate([DEFAULT_TEMPLATE], url));
+		}).open();
 	}
 }

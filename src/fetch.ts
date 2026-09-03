@@ -1,4 +1,5 @@
 import { requestUrl } from 'obsidian';
+import type { RequestUrlResponse } from 'obsidian';
 
 /**
  * A `fetch` implementation backed by Obsidian's `requestUrl`, for handing to Defuddle.
@@ -50,3 +51,93 @@ export const obsidianFetch: typeof globalThis.fetch = async (input, init) => {
 		arrayBuffer: async () => response.arrayBuffer,
 	} as unknown as Response;
 };
+
+/**
+ * A failure with a sentence fit to show the human. Every path out of `fetchPage` that is not a page
+ * produces one of these, because P8's lesson generalises: a failure the user cannot see is worse
+ * than one they can.
+ */
+export class FetchError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'FetchError';
+	}
+}
+
+/** Chrome on Android. Sites that vary by client should see something they recognise. */
+export const DEFAULT_USER_AGENT =
+	'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36';
+
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+/** Rejects an http(s) URL we cannot use before anything reaches the network. */
+export function parseUrl(input: string): URL {
+	let url: URL;
+	try {
+		url = new URL(input.trim());
+	} catch {
+		throw new FetchError(`Not a URL: ${input.trim().slice(0, 80)}`);
+	}
+	if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+		throw new FetchError(`Only http and https can be clipped, not ${url.protocol.replace(':', '')}`);
+	}
+	return url;
+}
+
+function describeStatus(status: number, host: string): string {
+	if (status === 404) return `${host} says that page does not exist (404)`;
+	if (status === 401) return `${host} wants you signed in (401)`;
+	if (status === 403) return `${host} refused the request (403). It may be blocking non-browser clients`;
+	if (status === 429) return `${host} is rate-limiting us (429). Try again shortly`;
+	if (status >= 500) return `${host} had a server error (${status})`;
+	return `${host} answered ${status}`;
+}
+
+/**
+ * Fetches a page's HTML, or throws a FetchError whose message says what went wrong.
+ *
+ * `requestUrl` has no cancellation, so the timeout here frees the *caller* rather than the request:
+ * a page that never answers stops blocking the command, but keeps running until it gives up on its
+ * own. That is a deliberate trade — an unbounded spinner is the worse failure.
+ */
+export async function fetchPage(
+	input: string,
+	options: { timeoutMs?: number; userAgent?: string } = {},
+): Promise<{ html: string; url: string }> {
+	const url = parseUrl(input);
+	const host = url.host;
+
+	let timer = 0;
+	const timeout = new Promise<never>((_, reject) => {
+		timer = window.setTimeout(
+			() => reject(new FetchError(`${host} did not answer within ${(options.timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000}s`)),
+			options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+		);
+	});
+
+	let response: RequestUrlResponse;
+	try {
+		response = await Promise.race([
+			requestUrl({
+				url: url.href,
+				headers: { 'User-Agent': options.userAgent ?? DEFAULT_USER_AGENT },
+				throw: false,
+			}),
+			timeout,
+		]);
+	} catch (error) {
+		if (error instanceof FetchError) throw error;
+		if (!navigator.onLine) throw new FetchError('You appear to be offline');
+		const detail = error instanceof Error ? error.message : String(error);
+		throw new FetchError(`Could not reach ${host}: ${detail}`);
+	} finally {
+		window.clearTimeout(timer);
+	}
+
+	if (response.status >= 400) throw new FetchError(describeStatus(response.status, host));
+
+	const html = response.text;
+	if (!html || !html.trim()) throw new FetchError(`${host} answered ${response.status} with an empty body`);
+
+	return { html, url: url.href };
+}
