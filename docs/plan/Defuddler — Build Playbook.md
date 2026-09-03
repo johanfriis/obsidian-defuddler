@@ -216,6 +216,38 @@ fetch buys — as S1 predicted.
   only property that matters here (P10), but it is a reminder that a fingerprinting site does not
   serve `requestUrl` the same page twice.
 
+### S4 — the write path — the probe is built, and one setting has to change first
+
+Read out of Sanctum's config on 2026-09-04, before running anything:
+
+| Setting | Value |
+|---|---|
+| Templater `trigger_on_file_creation` | `null` |
+| Templater `enable_folder_templates` | `null` |
+| Templater folder mapping | `Clippings` → `Templates/Journal.md` |
+| Core daily notes | enabled, folder `Calendar`, template `Templates/Daily Template.md`, no `format` |
+
+**Both Templater flags are off.** A folder template is configured for `Clippings` but neither the
+creation trigger nor folder templates are enabled, so nothing would fire today no matter how a note
+is created. The spike reports both flags beside its result, so a run cannot be misread as a verdict
+on the vault API when it is a verdict on a setting.
+
+**This also puts a question mark over `G0/A5`,** the Android measurement that `obsidian://new` does
+not fire Templater's on-create trigger. That finding is load-bearing for P2, and if these flags were
+also off when it was taken, it measured the setting rather than the URI. It does not change what we
+build — the vault API is the right way to write a note regardless — but P2's *headline benefit* is
+unproven until Templater is switched on and the probe run. Worth knowing before claiming it works.
+
+**Daily-note resolution turns out to be easy**, which retires the risk that M4 would need a private
+API. `daily-notes.json` in the config directory carries `folder`, `template` and `format`; `format`
+is absent here, which means the default `YYYY-MM-DD`. Folder plus a formatted date is the path, and
+`app.vault.configDir` resolves the directory without hardcoding `.obsidian`.
+
+**To close S4:** turn on Templater's `Trigger Templater on new file creation` and its folder
+templates, then run `Defuddler: Run the M0 spike` once more. It writes a probe note into `Clippings`,
+waits two seconds, reads it back, and reports whether an automation rewrote it. The note is left in
+place because if Templater fires, that file is the evidence.
+
 ### GATE G0 — the de-risking spike — nearly closed
 
 S1 passed, S2 passed on both halves, S3 passed. **S4 is the only spike left**, and it is the one that
@@ -596,9 +628,10 @@ The debt P2 names. Implement all six of `Template['behavior']` against the vault
 (with a dedup rule — decide and record it, since the URI's was invisible to us), `append-specific`,
 `prepend-specific`, `overwrite`, and `append-daily` / `prepend-daily`.
 
-Daily notes are the risky one: resolving today's note means reading the daily-notes or periodic-notes
-configuration, and the internal-plugin route is semi-private API. S4 settles the approach; whatever it
-is, a missing or disabled daily-notes setup must produce a clear message rather than a crash.
+Daily notes turned out not to be risky. S4 read the config: `daily-notes.json` under
+`app.vault.configDir` carries `folder`, `template` and `format`, and an absent `format` means
+`YYYY-MM-DD`. Folder plus a formatted date is the path, with no private API. A missing or disabled
+daily-notes setup must still produce a clear message rather than a crash.
 
 ### Acceptance
 
@@ -666,10 +699,11 @@ whichever vault was last used, so anything generating these links should carry t
 | Real `DOMParser` extracts worse than the jsdom harness predicts | S1 measures it directly against the committed snapshots; a large regression reopens P1 | Open until G0 |
 | `navigator.clipboard.readText()` unreliable on mobile | P8 makes the prompt the fallback, so this degrades the ergonomics and never the function | Mitigated by design; S3 measures how often |
 | Defuddle's `PARTIAL_SELECTORS` contains a regex lookbehind, which throws on iOS < 16.4 | Not reachable on Android; would be a hard failure, not a degradation, on an old iPhone. Not fixable in our code — it is inside the pinned dependency | Accepted; revisit if iOS is ever a target |
-| ~820 KB of `main.js` slows Obsidian mobile's startup | Measured in Phase 0 and again in S3; the Defuddle dedupe is the only easy lever and it is already spent | Open until G0 |
-| Daily-note resolution needs semi-private API | S4 settles it; a clear failure message is the floor | Open until G0 |
+| ~~`main.js` size slows Obsidian mobile's startup~~ | **Closed by S3.** 836 KB, and five pages clip end to end in 6 s on the phone against 5 s on the desktop | Closed |
+| ~~Daily-note resolution needs semi-private API~~ | **Closed 2026-09-04.** `daily-notes.json` under `app.vault.configDir` carries folder, template and format; an absent format means `YYYY-MM-DD`. No private API | Closed |
+| P2's headline benefit is unproven, and `G0/A5` may have measured a disabled setting rather than the URI | Templater's creation trigger and folder templates are both off in Sanctum. Turn them on, then run the spike's S4 section. The vault API is still the right way to write a note either way | Open until S4 |
 | Server HTML is empty for SPA-only pages | P10 — a note with frontmatter and no body is a valid outcome, and §13's rendered source is the real answer if it becomes common | Accepted |
-| Obsidian on the phone is below 1.13, so declarative settings render nothing | `minAppVersion` is 1.13.0 and the desktop is on 1.14.0, but the phone's version is unverified. S3 checks it. If it is behind, the fix is to update the phone, not to re-add `display()` | Open until G0 |
+| Obsidian on the phone is below 1.13, so declarative settings render nothing | The phone ran the spike, so it is new enough to have installed a plugin declaring `minAppVersion` 1.13.0. Unverified beyond that | Mostly closed |
 | Reading the vault's property types reaches into the config directory, whose file shape is undocumented | Resolve the path through `app.vault.configDir`, never a hardcoded `.obsidian`, and treat any failure as "no types" — the quoted-text default is valid YAML, so the failure is a downgrade, not a break | Accepted |
 | Upstream changes `api.ts`'s signature | It is a young, deliberately public entry point; the harness catches behaviour changes, not signature changes, so a submodule bump reads its diff | Accepted |
 

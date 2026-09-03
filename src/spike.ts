@@ -84,6 +84,93 @@ async function runCase(c: { name: string; url: string; expect: string }): Promis
 	return lines;
 }
 
+/** Reads another plugin's stored settings, or the app's own config, without guessing at paths. */
+async function readConfig(app: App, relative: string): Promise<Record<string, unknown> | null> {
+	const path = normalizePath(`${app.vault.configDir}/${relative}`);
+	try {
+		if (!(await app.vault.adapter.exists(path))) return null;
+		return JSON.parse(await app.vault.adapter.read(path)) as Record<string, unknown>;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * S4 — the write path. Answers the claim P2 rests on: that a note written with the vault API fires
+ * the on-create automations that `obsidian://new` measurably did not.
+ *
+ * It writes one probe note and leaves it in place rather than cleaning up, because if Templater
+ * does fire, that file *is* the evidence.
+ */
+async function writePathSection(app: App): Promise<string[]> {
+	const lines: string[] = ['## S4 — the write path', ''];
+
+	const templater = await readConfig(app, 'plugins/templater-obsidian/data.json');
+	if (!templater) {
+		lines.push('- templater: not installed, or its settings are unreadable');
+	} else {
+		const folders = templater.folder_templates as Array<{ folder?: string; template?: string }> | undefined;
+		lines.push(
+			`- templater \`trigger_on_file_creation\`: **${JSON.stringify(templater.trigger_on_file_creation)}**`,
+			`- templater \`enable_folder_templates\`: **${JSON.stringify(templater.enable_folder_templates)}**`,
+			`- templater folder mappings: ${
+				folders?.length ? folders.map((f) => `\`${f.folder}\` → \`${f.template}\``).join(', ') : 'none'
+			}`,
+			'',
+			'  Both flags must be truthy for a folder template to run on creation. If either is `null`',
+			'  or `false`, nothing fires here and the test below proves nothing about the vault API —',
+			'  it proves the setting is off.',
+		);
+	}
+
+	const daily = await readConfig(app, 'daily-notes.json');
+	const format = (daily?.format as string) || 'YYYY-MM-DD';
+	lines.push(
+		'',
+		`- daily notes config: ${daily ? `folder \`${daily.folder ?? ''}\`, format \`${format}\`${
+			daily.format ? '' : ' (absent, so this is the default)'
+		}, template \`${daily.template ?? 'none'}\`` : 'absent'}`,
+	);
+
+	// The probe. Written into the folder Templater has a mapping for, so a folder template would
+	// replace it outright if the flags above were on.
+	const targetFolder = ((templater?.folder_templates as Array<{ folder?: string }> | undefined)?.[0]
+		?.folder ?? '') as string;
+	const probePath = normalizePath(
+		`${targetFolder ? `${targetFolder}/` : ''}Defuddler write probe ${Date.now()}.md`,
+	);
+	const original = [
+		'---',
+		'defuddler-probe: true',
+		'---',
+		'',
+		'If an on-create automation ran, this line is gone or something was added around it.',
+		'',
+		'Templater would evaluate this: <% tp.date.now("YYYY-MM-DD HH:mm") %>',
+		'',
+	].join('\n');
+
+	try {
+		const created = await app.vault.create(probePath, original);
+		lines.push('', `- \`vault.create\` wrote \`${probePath}\``);
+		// Give any on-create handler a moment to rewrite the file before reading it back.
+		await new Promise((resolve) => window.setTimeout(resolve, 2000));
+		const after = await app.vault.read(created);
+		const changed = after !== original;
+		lines.push(
+			`- content after 2 s: **${changed ? 'CHANGED — an on-create automation fired' : 'unchanged'}**`,
+			`- the Templater expression was ${after.includes('<% tp.') ? '**not** evaluated' : 'evaluated'}`,
+			'',
+			`  The probe note is left in place on purpose. Delete \`${probePath}\` when you are done.`,
+		);
+	} catch (error) {
+		lines.push('', `- \`vault.create\`: **THREW** ${error instanceof Error ? error.message : String(error)}`);
+	}
+
+	lines.push('');
+	return lines;
+}
+
 export async function runSpike(app: App): Promise<void> {
 	new Notice('Defuddler spike: running, this takes a minute…');
 	const started = Date.now();
@@ -106,6 +193,8 @@ export async function runSpike(app: App): Promise<void> {
 	];
 
 	for (const c of CASES) lines.push(...(await runCase(c)));
+
+	lines.push(...(await writePathSection(app)));
 
 	lines.push('---', '', `Total ${Math.round((Date.now() - started) / 1000)} s.`);
 
