@@ -13,17 +13,24 @@ import { transcriptLanguageFor } from './youtube-captions';
  * Nothing here fails silently. Every branch ends in a Notice the human can read and act on, which is
  * the governing principle applied to failure — surface it, never reroute around it.
  */
-export async function clipUrlToVault(
-	app: App,
-	url: string,
-	template: Template,
+export interface ClipRequest {
+	url: string;
+	template: Template;
 	/** The vault's property types, which win over the template's (GATE G1). */
-	propertyTypes?: Record<string, string>,
-): Promise<TFile | null> {
+	propertyTypes?: Record<string, string>;
+	/** Where the note lands when the template names no path of its own. */
+	outputFolder?: string;
+	/** Open the note once it is written. */
+	open?: boolean;
+	userAgent?: string;
+}
+
+export async function clipUrlToVault(app: App, request: ClipRequest): Promise<TFile | null> {
+	const { url, template, propertyTypes } = request;
 	const progress = new Notice('Fetching…', 0);
 
 	try {
-		const page = await fetchPage(url);
+		const page = await fetchPage(url, { userAgent: request.userAgent });
 
 		progress.setMessage('Extracting…');
 		// Only a YouTube watch page has caption tracks, so this is `undefined` everywhere else and
@@ -40,7 +47,7 @@ export async function clipUrlToVault(
 
 		progress.setMessage('Saving…');
 		const file = await createNote(app, {
-			folder: template.path,
+			folder: template.path || request.outputFolder || '',
 			noteName: result.noteName,
 			content: result.fullContent,
 		});
@@ -54,7 +61,7 @@ export async function clipUrlToVault(
 				? `Clipped “${result.noteName}”`
 				: `Clipped “${result.noteName}” — no readable body on that page`,
 		);
-		await app.workspace.getLeaf(true).openFile(file);
+		if (request.open !== false) await app.workspace.getLeaf(true).openFile(file);
 		return file;
 	} catch (error) {
 		progress.hide();

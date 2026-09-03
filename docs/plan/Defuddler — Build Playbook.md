@@ -711,17 +711,37 @@ property settings fixes it for every template, with no template edit. The same g
 
 ## 9. M3 — Settings
 
-A `PluginSettingTab` implementing `getSettingDefinitions()` and no `display()` (P5), everything
-inside `plugin.settings`: template folder, default template, default output folder, whether to open
-the note after clipping, and the user-agent string. Sentence case throughout, no plugin name in the
-headings. Re-render with `this.update()`, never `this.display()` — a non-empty definition list
-bypasses `display()` entirely.
+**Built 2026-09-04.** A `PluginSettingTab` that declares `getSettingDefinitions()` and has no
+`display()` (P5). Five settings in two groups: template folder and default template; output folder,
+whether to open the note after clipping, and the user agent.
+
+**The declarative API does more than P5 assumed, and it removes work rather than adding it.**
+`PluginSettingTab` overrides `getControlValue` and `setControlValue` to read and persist
+`plugin.settings` itself, so a control's `key` is the entire wiring a value needs — no `onChange`, no
+`saveData` call, no chance of writing outside the settings object. That is also why P5's
+single-object rule is not merely tidy: the tab writes the whole object back.
+
+The one moving part is the default-template dropdown, whose options come from whatever is in the
+vault. The plugin calls `update()` when the folder reloads, which is what that method is for.
+
+Two things the milestone changed elsewhere:
+
+- `clipUrlToVault` takes a request object rather than a growing argument list, now that the output
+  folder, the user agent and whether to open the note all come from settings.
+- The picker says *why* a template is preselected, because there are now two reasons — a trigger
+  matched, or it is the configured default — and "matches this URL" would have been a lie for the
+  second.
 
 ### Acceptance
 
-- [ ] Every setting persists across a reload, on desktop and mobile.
-- [ ] No data is written outside `plugin.settings`.
-- [ ] The tab is usable by keyboard alone, and touch targets clear 44×44px on the phone.
+- [x] No data is written outside `plugin.settings` — structurally, since the tab is the only writer
+      and it persists the whole object.
+- [x] The output folder, the user agent and the open-after-clipping toggle each change what the
+      pipeline does, proven in `test/pipeline.test.ts`.
+- [x] Touch targets clear 44px under `pointer: coarse` for the two modals that are ours. The settings
+      tab is Obsidian's own rendering, so its sizing is Obsidian's.
+- [ ] **Needs the app:** every setting persists across a reload, on desktop and mobile, and the tab is
+      usable by keyboard alone.
 
 ## 10. M4 — Save behaviours
 

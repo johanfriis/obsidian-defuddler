@@ -2,7 +2,7 @@ import { Notice, Plugin, TAbstractFile, debounce, normalizePath } from 'obsidian
 import type { Template } from './vendor/obsidian-clipper/src/api';
 import { clipUrlToVault } from './src/pipeline';
 import { readVaultPropertyTypes } from './src/property-types';
-import { DEFAULT_SETTINGS, withDefaults } from './src/settings';
+import { DEFAULT_SETTINGS, DefuddlerSettingTab, withDefaults } from './src/settings';
 import type { DefuddlerSettings } from './src/settings';
 import { DEFAULT_TEMPLATE, ensureTemplateFolder, loadTemplates, matchByUrl } from './src/templates';
 import { JsonImport } from './src/ui/json-import';
@@ -12,9 +12,17 @@ import { UrlPrompt } from './src/ui/url-prompt';
 export default class DefuddlerPlugin extends Plugin {
 	settings: DefuddlerSettings = DEFAULT_SETTINGS;
 	private templates: Template[] = [];
+	private settingTab?: DefuddlerSettingTab;
+
+	/** The template dropdown's options. Read on every render of the settings tab. */
+	templateNames(): string[] {
+		return this.templates.map((template) => template.name);
+	}
 
 	async onload(): Promise<void> {
 		this.settings = withDefaults(await this.loadData());
+		this.settingTab = new DefuddlerSettingTab(this.app, this);
+		this.addSettingTab(this.settingTab);
 
 		this.addCommand({
 			id: 'clip-from-clipboard',
@@ -66,6 +74,9 @@ export default class DefuddlerPlugin extends Plugin {
 			if (seed) await ensureTemplateFolder(this.app, this.settings.templateFolder);
 			const { templates, errors } = await loadTemplates(this.app, this.settings.templateFolder);
 			this.templates = templates;
+			// The default-template dropdown is built from what is in the vault, so the tab has to be
+			// told when that changes. Cheap, and only touches definitions.
+			this.settingTab?.update();
 			for (const error of errors) new Notice(`Template \`${error.file}\`: ${error.message}`, 10000);
 		} catch (error) {
 			new Notice(
@@ -96,15 +107,31 @@ export default class DefuddlerPlugin extends Plugin {
 		const available = this.templates.length ? this.templates : [DEFAULT_TEMPLATE];
 
 		const clip = async (template: Template) => {
-			const propertyTypes = await readVaultPropertyTypes(this.app);
-			await clipUrlToVault(this.app, url, template, propertyTypes);
+			await clipUrlToVault(this.app, {
+				url,
+				template,
+				propertyTypes: await readVaultPropertyTypes(this.app),
+				outputFolder: this.settings.outputFolder,
+				open: this.settings.openAfterClipping,
+				userAgent: this.settings.userAgent,
+			});
 		};
 
 		if (available.length === 1) {
 			await clip(available[0]);
 			return;
 		}
-		new TemplatePicker(this.app, available, matchByUrl(available, url), (template) => {
+
+		// A trigger match preselects; failing that, the configured default does. Neither applies the
+		// template — the human still confirms (P4).
+		const matched = matchByUrl(available, url);
+		const preselected =
+			matched ?? available.find((template) => template.name === this.settings.defaultTemplate);
+		const reason = matched
+			? `matches ${matched.triggers?.[0] ?? 'this URL'}`
+			: 'your default template';
+
+		new TemplatePicker(this.app, available, preselected, reason, (template) => {
 			void clip(template);
 		}).open();
 	}

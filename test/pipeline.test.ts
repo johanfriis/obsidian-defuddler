@@ -42,7 +42,7 @@ describe('clipUrlToVault', () => {
 		serve(readFileSync(join(fixtures, 'apnews-article.html'), 'utf8'));
 		const { app, contents, opened } = fakeApp();
 
-		const file = await clipUrlToVault(app, APNEWS, DEFAULT_TEMPLATE);
+		const file = await clipUrlToVault(app, { url: APNEWS, template: DEFAULT_TEMPLATE });
 
 		expect(file).not.toBeNull();
 		expect(file!.path).toMatch(/^Clippings\/.+\.md$/);
@@ -63,7 +63,7 @@ describe('clipUrlToVault', () => {
 		serve(readFileSync(join(fixtures, 'instagram-wall.html'), 'utf8'));
 		const { app, contents } = fakeApp();
 
-		const file = await clipUrlToVault(app, 'https://www.instagram.com/explore/', DEFAULT_TEMPLATE);
+		const file = await clipUrlToVault(app, { url: 'https://www.instagram.com/explore/', template: DEFAULT_TEMPLATE });
 
 		expect(file).not.toBeNull();
 		expect(contents.get(file!.path)).toContain('source: "https://www.instagram.com/explore/"');
@@ -80,7 +80,7 @@ describe('clipUrlToVault', () => {
 			serve('', status);
 			const { app, files } = fakeApp();
 
-			expect(await clipUrlToVault(app, APNEWS, DEFAULT_TEMPLATE)).toBeNull();
+			expect(await clipUrlToVault(app, { url: APNEWS, template: DEFAULT_TEMPLATE })).toBeNull();
 			expect(files.size).toBe(0);
 			expect(__notices.at(-1)).toContain(expected);
 			expect(__notices.at(-1)).toContain('apnews.com');
@@ -92,14 +92,14 @@ describe('clipUrlToVault', () => {
 		// would say so instead.
 		const { app, files } = fakeApp();
 
-		expect(await clipUrlToVault(app, 'just some text', DEFAULT_TEMPLATE)).toBeNull();
+		expect(await clipUrlToVault(app, { url: 'just some text', template: DEFAULT_TEMPLATE })).toBeNull();
 		expect(files.size).toBe(0);
 		expect(__notices.at(-1)).toContain('Not a URL');
 	});
 
 	it('refuses a scheme it cannot fetch', async () => {
 		const { app } = fakeApp();
-		expect(await clipUrlToVault(app, 'ftp://example.com/x', DEFAULT_TEMPLATE)).toBeNull();
+		expect(await clipUrlToVault(app, { url: 'ftp://example.com/x', template: DEFAULT_TEMPLATE })).toBeNull();
 		expect(__notices.at(-1)).toContain('Only http and https');
 	});
 
@@ -107,19 +107,54 @@ describe('clipUrlToVault', () => {
 		serve('   ');
 		const { app, files } = fakeApp();
 
-		expect(await clipUrlToVault(app, APNEWS, DEFAULT_TEMPLATE)).toBeNull();
+		expect(await clipUrlToVault(app, { url: APNEWS, template: DEFAULT_TEMPLATE })).toBeNull();
 		expect(files.size).toBe(0);
 		expect(__notices.at(-1)).toContain('empty body');
+	});
+
+	it('falls back to the output folder when the template names no path', async () => {
+		serve(readFileSync(join(fixtures, 'apnews-article.html'), 'utf8'));
+		const { app } = fakeApp();
+
+		const file = await clipUrlToVault(app, {
+			url: APNEWS,
+			template: { ...DEFAULT_TEMPLATE, path: '' },
+			outputFolder: 'Inbox',
+		});
+
+		expect(file!.path).toMatch(/^Inbox\/.+\.md$/);
+	});
+
+	it('leaves the note closed when asked to', async () => {
+		serve(readFileSync(join(fixtures, 'apnews-article.html'), 'utf8'));
+		const { app, opened } = fakeApp();
+
+		await clipUrlToVault(app, { url: APNEWS, template: DEFAULT_TEMPLATE, open: false });
+
+		expect(opened).toEqual([]);
+	});
+
+	it('sends the configured user agent', async () => {
+		let seen: string | undefined;
+		__setRequestUrl(async (params) => {
+			seen = params.headers?.['User-Agent'];
+			return { status: 200, text: readFileSync(join(fixtures, 'apnews-article.html'), 'utf8'), headers: {}, json: null, arrayBuffer: new ArrayBuffer(0) };
+		});
+		const { app } = fakeApp();
+
+		await clipUrlToVault(app, { url: APNEWS, template: DEFAULT_TEMPLATE, userAgent: 'Defuddler/test' });
+
+		expect(seen).toBe('Defuddler/test');
 	});
 
 	it('refuses to clobber an existing note, because the dedup rule is M4\'s to choose', async () => {
 		serve(readFileSync(join(fixtures, 'apnews-article.html'), 'utf8'));
 		const { app, contents } = fakeApp();
 
-		const first = await clipUrlToVault(app, APNEWS, DEFAULT_TEMPLATE);
+		const first = await clipUrlToVault(app, { url: APNEWS, template: DEFAULT_TEMPLATE });
 		const before = contents.get(first!.path);
 
-		const second = await clipUrlToVault(app, APNEWS, DEFAULT_TEMPLATE);
+		const second = await clipUrlToVault(app, { url: APNEWS, template: DEFAULT_TEMPLATE });
 
 		expect(second).toBeNull();
 		expect(contents.get(first!.path)).toBe(before);

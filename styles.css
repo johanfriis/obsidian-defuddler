@@ -1,7 +1,11 @@
 /* Obsidian's own variables only — no hardcoded colours, sizes or spacing, so themes and snippets
-   keep working. Scoped to .defuddler-* so nothing here reaches the rest of the app. */
+   keep working. Scoped to .defuddler-* so nothing here reaches the rest of the app.
 
-.defuddler-url-input {
+   The settings tab is declared rather than rendered, so Obsidian styles and sizes it. What is below
+   covers the two modals, which are ours. */
+
+.defuddler-url-input,
+.defuddler-json-input {
 	width: 100%;
 	font-family: var(--font-monospace);
 	font-size: var(--font-ui-small);
@@ -12,8 +16,15 @@
 	font-size: var(--font-ui-smaller);
 }
 
-.defuddler-json-input {
-	width: 100%;
-	font-family: var(--font-monospace);
-	font-size: var(--font-ui-smaller);
+/* Touch targets clear 44px on a phone. Obsidian's inputs are comfortable on a desktop and tighter
+   on mobile, and a URL field that is hard to tap is the first thing you meet after the command. */
+@media (pointer: coarse) {
+	.defuddler-url-input {
+		min-height: 44px;
+		font-size: var(--font-ui-medium);
+	}
+
+	.defuddler-json-input {
+		min-height: 44px;
+	}
 }

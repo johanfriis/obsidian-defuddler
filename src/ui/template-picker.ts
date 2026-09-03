@@ -13,18 +13,22 @@ export class TemplatePicker extends FuzzySuggestModal<Template> {
 	constructor(
 		app: App,
 		private readonly templates: Template[],
-		private readonly matched: Template | undefined,
+		private readonly preselected: Template | undefined,
+		/** Why it is preselected, shown beside it so the choice is legible rather than magic. */
+		private readonly reason: string,
 		private readonly onChoose: (template: Template) => void,
 	) {
 		super(app);
 		this.setPlaceholder(
-			matched ? `Matched ${matched.name} — Enter to accept, or pick another` : 'Pick a template',
+			preselected
+				? `${preselected.name} — Enter to accept, or pick another`
+				: 'Pick a template',
 		);
 	}
 
 	getItems(): Template[] {
-		if (!this.matched) return this.templates;
-		return [this.matched, ...this.templates.filter((t) => t.id !== this.matched!.id)];
+		if (!this.preselected) return this.templates;
+		return [this.preselected, ...this.templates.filter((t) => t.id !== this.preselected!.id)];
 	}
 
 	getItemText(template: Template): string {
@@ -35,9 +39,7 @@ export class TemplatePicker extends FuzzySuggestModal<Template> {
 		super.renderSuggestion(match, el);
 		const template = match.item;
 		const note =
-			template.id === this.matched?.id
-				? `matches ${template.triggers?.[0] ?? 'this URL'}`
-				: template.path || 'vault root';
+			template.id === this.preselected?.id ? this.reason : template.path || 'vault root';
 		el.createDiv({ cls: 'defuddler-picker-note', text: note });
 	}
 

@@ -102,10 +102,15 @@ describe('importing a real export', () => {
 			defuddle: { fetch: noNetwork },
 		});
 
+		// kepano's template stamps `created: {{date}}`, which resolves to *now* with seconds. The two
+		// clips are milliseconds apart and can straddle a second, so that line is dropped from the
+		// comparison rather than left to flake.
+		const stable = (text: string) => text.replace(/^created:.*$/m, 'created: <stamp>');
+
 		expect(viaFile.noteName).toBe(direct.noteName);
-		expect(viaFile.frontmatter).toBe(direct.frontmatter);
+		expect(stable(viaFile.frontmatter)).toBe(stable(direct.frontmatter));
 		expect(viaFile.content).toBe(direct.content);
-		expect(viaFile.fullContent).toBe(direct.fullContent);
+		expect(stable(viaFile.fullContent)).toBe(stable(direct.fullContent));
 		expect(roundTripped.triggers).toEqual(['https://www.youtube.com/watch?v=']);
 	});
 
