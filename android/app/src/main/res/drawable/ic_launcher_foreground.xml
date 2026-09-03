@@ -27,19 +27,29 @@
             android:pathData="M201.87 197.76a574.87 574.87 0 0 0 19.78-31.6 8.67 8.67 0 0 0-.61-9.48 185.58 185.58 0 0 1-21.82-35.9c-5.91-14.16-6.73-36.08-6.83-46.69 0-4.07-1.22-8.05-3.77-11.21l-34.16-43.33c0 1.94-.4 3.87-.81 5.81a76.42 76.42 0 0 1-5.71 15.9l-4.7 9.8-3.36 6.72a111.95 111.95 0 0 0-12.03 38.23 93.9 93.9 0 0 0 8.67 47.92 67.9 67.9 0 0 1 39.56 16.52 99.4 99.4 0 0 1 25.8 37.31Z" />
     </group>
 
-    <!-- Punched out of the gem in the background colour first, so the badge reads as an overlay
-         rather than as a disc floating above it. -->
+    <!-- Badge disc and outline are both black (Johan, 2026-09-03), so they are one circle rather
+         than two stacked ones; re-split it if the outline ever wants its own colour. Pure black
+         against the icon's near-black ground means the badge only shows its edge where it crosses
+         the gem, which is where it needs to. -->
     <path
-        android:fillColor="#1E1A2B"
-        android:pathData="M66,68m-15.5,0a15.5,15.5 0 1,0 31,0a15.5,15.5 0 1,0 -31,0" />
-    <path
-        android:fillColor="#F3EFFF"
-        android:pathData="M66,68m-13,0a13,13 0 1,0 26,0a13,13 0 1,0 -26,0" />
+        android:fillColor="#000000"
+        android:pathData="M65,67m-15.5,0a15.5,15.5 0 1,0 31,0a15.5,15.5 0 1,0 -31,0" />
 
-    <group android:translateX="55" android:translateY="57"
-        android:scaleX="0.92" android:scaleY="0.92">
-        <path android:strokeColor="#1E1A2B" android:strokeWidth="2"
-            android:strokeLineCap="round" android:strokeLineJoin="round"
-            android:pathData="M12,7v14M3,18a1,1 0 0,1 -1,-1V4a1,1 0 0,1 1,-1h5a4,4 0 0,1 4,4a4,4 0 0,1 4,-4h5a1,1 0 0,1 1,1v13a1,1 0 0,1 -1,1h-6a3,3 0 0,0 -3,3a3,3 0 0,0 -3,-3z" />
+    <!-- Filled, not outlined (Johan, 2026-09-03): lucide's book-open is a stroke glyph, so the
+         closed outer subpath is filled lilac and its centre line is redrawn in black as the spine.
+         At badge size a hairline outline disappeared; a solid book survives. -->
+    <group android:translateX="53" android:translateY="55">
+        <path
+            android:fillColor="#C9B6FF"
+            android:strokeColor="#C9B6FF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M3,18a1,1 0 0,1 -1,-1V4a1,1 0 0,1 1,-1h5a4,4 0 0,1 4,4a4,4 0 0,1 4,-4h5a1,1 0 0,1 1,1v13a1,1 0 0,1 -1,1h-6a3,3 0 0,0 -3,3a3,3 0 0,0 -3,-3z" />
+        <path
+            android:strokeColor="#000000"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:pathData="M12,7v14" />
     </group>
 </vector>
