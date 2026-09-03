@@ -1,6 +1,9 @@
 <resources>
-    <!-- Dev-only label; the shipped name is a G2 decision (playbook §10/§17). -->
-    <string name="app_name">Clipper (dev)</string>
+    <!-- The app's name, on the launcher and on the home screen. Johan, 2026-09-03: the "(dev)"
+         suffix was a placeholder from P0.6 and came from this string alone — there is no debug
+         `applicationIdSuffix` or `resValue` behind it. Naming it after Obsidian is D34's territory
+         (personal use, never distributed); the icon half of G2 is still open. -->
+    <string name="app_name">Obsidian Reader</string>
 
     <string name="home_hint">Share a link from any app to read it here.</string>
 
