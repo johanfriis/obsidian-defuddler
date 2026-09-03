@@ -16,7 +16,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -37,7 +39,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -56,9 +57,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import it.slowmail.obsidianreader.BuildConfig
@@ -421,6 +424,11 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
  * which is D26's recovery for a too-early reader tap, and a page that fails outright still gets the
  * error pane's Retry.
  *
+ * Both buttons are `SmallFloatingActionButton` and both are `CircleShape` (Johan, 2026-09-03):
+ * Material's default FAB is 56dp with a rounded-square corner, and at this size and count the
+ * squircle reads as chrome. Colour carries the hierarchy the size no longer does — the main button
+ * takes `primaryContainer` while the menu is open.
+ *
  * The dismiss scrim is the full window on purpose — "tap anywhere that is not a button" is the
  * close gesture, and that first tap is deliberately swallowed rather than passed to the page.
  */
@@ -434,6 +442,12 @@ private fun ShellControls(
     onClip: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Deliberately quicker than Material's defaults (Johan, 2026-09-03). The menu sits between the
+    // finger and the thing it wants; at this range the motion reads as feedback rather than as an
+    // animation waited on.
+    val motion = tween<Float>(durationMillis = 110, easing = FastOutSlowInEasing)
+    val slide = tween<IntOffset>(durationMillis = 110, easing = FastOutSlowInEasing)
+
     // Collapse before acting, so the menu is never left open behind a sheet or a reloading page.
     fun run(action: () -> Unit) {
         onExpandedChange(false)
@@ -441,7 +455,11 @@ private fun ShellControls(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        AnimatedVisibility(visible = expanded, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn(animationSpec = motion),
+            exit = fadeOut(animationSpec = motion),
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -461,11 +479,16 @@ private fun ShellControls(
         ) {
             AnimatedVisibility(
                 visible = expanded,
-                enter = fadeIn() + scaleIn(initialScale = 0.7f) + slideInVertically { it / 2 },
-                exit = fadeOut() + scaleOut(targetScale = 0.7f) + slideOutVertically { it / 2 },
+                enter = fadeIn(animationSpec = motion) +
+                    scaleIn(animationSpec = motion, initialScale = 0.7f) +
+                    slideInVertically(animationSpec = slide) { it / 2 },
+                exit = fadeOut(animationSpec = motion) +
+                    scaleOut(animationSpec = motion, targetScale = 0.7f) +
+                    slideOutVertically(animationSpec = slide) { it / 2 },
             ) {
                 SmallFloatingActionButton(
                     onClick = { run(onToggleReader) },
+                    shape = CircleShape,
                     containerColor = if (readerActive) {
                         MaterialTheme.colorScheme.primary
                     } else {
@@ -484,10 +507,12 @@ private fun ShellControls(
             // than simply rotating.
             val rotation by animateFloatAsState(
                 targetValue = if (expanded) 45f else 0f,
+                animationSpec = motion,
                 label = "shellFabRotation",
             )
-            FloatingActionButton(
+            SmallFloatingActionButton(
                 onClick = { if (expanded) run(onClip) else onExpandedChange(true) },
+                shape = CircleShape,
                 containerColor = if (expanded) {
                     MaterialTheme.colorScheme.primaryContainer
                 } else {

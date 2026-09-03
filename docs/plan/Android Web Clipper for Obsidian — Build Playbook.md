@@ -1073,6 +1073,12 @@ The Kotlin here is plumbing; the clipper is upstream's.
     the menu.
   - **Menu state is not saved across process death** — a menu the user cannot remember opening
     should not come back open.
+  - **Shape, size and speed are Johan's, same day.** Both buttons are `SmallFloatingActionButton`
+    and both are `CircleShape`: Material's 56dp rounded-square FAB read as chrome at this size and
+    count, so colour carries the hierarchy instead — the main button takes `primaryContainer` while
+    the menu is open. Motion is a 110 ms `FastOutSlowInEasing` tween rather than Material's
+    defaults; the menu sits between the finger and the thing it wants, so it should read as
+    feedback, not as an animation to wait through.
 
 ### Open, not decided
 
