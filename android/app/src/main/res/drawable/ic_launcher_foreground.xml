@@ -1,16 +1,45 @@
-<!-- Placeholder "reader lines" glyph. No Obsidian marks (playbook §17); final icon at G2. -->
+<!-- Obsidian's own gem (upstream's three-facet, 256-grid mark from `utils/reader.ts`) with a
+     book badge overlapping its lower-right corner: the app is Obsidian's clipper plus a reader,
+     and the icon says so. **Permitted by D34 alone** — personal use, never distributed. If that
+     ever changes, this file changes with it.
+
+     Geometry. The mark's own bounds inside its 256 viewBox are x=24 w=198.8, y=0 h=256 (measured,
+     not guessed), so the group is scaled 0.185 and translated to put the gem's centre at (50,48),
+     leaving the lower-right corner free. The badge sits 30 units from the icon centre at its
+     furthest, inside the 66dp circle every launcher mask keeps.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <group android:translateX="27.17" android:translateY="24.32"
+        android:scaleX="0.185" android:scaleY="0.185">
+        <path
+            android:fillColor="#C9B6FF"
+            android:pathData="M94.82 149.44c6.53-1.94 17.13-4.9 29.26-5.71a102.97 102.97 0 0 1-7.64-48.84c1.63-16.51 7.54-30.38 13.25-42.1l3.47-7.14 4.48-9.18c2.35-5 4.08-9.38 4.9-13.56.81-4.07.81-7.64-.2-11.11-1.03-3.47-3.07-7.14-7.15-11.21a17.02 17.02 0 0 0-15.8 3.77l-52.81 47.5a17.12 17.12 0 0 0-5.5 10.2l-4.5 30.18a149.26 149.26 0 0 1 38.24 57.2ZM54.45 106l-1.02 3.06-27.94 62.2a17.33 17.33 0 0 0 3.27 18.96l43.94 45.16a88.7 88.7 0 0 0 8.97-88.5A139.47 139.47 0 0 0 54.45 106Z" />
+        <path
+            android:fillColor="#C9B6FF"
+            android:pathData="m82.9 240.79 2.34.2c8.26.2 22.33 1.02 33.64 3.06 9.28 1.73 27.73 6.83 42.82 11.21 11.52 3.47 23.45-5.8 25.08-17.73 1.23-8.67 3.57-18.46 7.75-27.53a94.81 94.81 0 0 0-25.9-40.99 56.48 56.48 0 0 0-29.56-13.35 96.55 96.55 0 0 0-40.99 4.79 98.89 98.89 0 0 1-15.29 80.34h.1Z" />
+        <path
+            android:fillColor="#C9B6FF"
+            android:pathData="M201.87 197.76a574.87 574.87 0 0 0 19.78-31.6 8.67 8.67 0 0 0-.61-9.48 185.58 185.58 0 0 1-21.82-35.9c-5.91-14.16-6.73-36.08-6.83-46.69 0-4.07-1.22-8.05-3.77-11.21l-34.16-43.33c0 1.94-.4 3.87-.81 5.81a76.42 76.42 0 0 1-5.71 15.9l-4.7 9.8-3.36 6.72a111.95 111.95 0 0 0-12.03 38.23 93.9 93.9 0 0 0 8.67 47.92 67.9 67.9 0 0 1 39.56 16.52 99.4 99.4 0 0 1 25.8 37.31Z" />
+    </group>
+
+    <!-- Punched out of the gem in the background colour first, so the badge reads as an overlay
+         rather than as a disc floating above it. -->
     <path
-        android:fillColor="#ECEFF1"
-        android:pathData="M32,38h44v6h-44z" />
+        android:fillColor="#1E1A2B"
+        android:pathData="M66,68m-15.5,0a15.5,15.5 0 1,0 31,0a15.5,15.5 0 1,0 -31,0" />
     <path
-        android:fillColor="#ECEFF1"
-        android:pathData="M32,51h44v6h-44z" />
-    <path
-        android:fillColor="#ECEFF1"
-        android:pathData="M32,64h30v6h-30z" />
+        android:fillColor="#F3EFFF"
+        android:pathData="M66,68m-13,0a13,13 0 1,0 26,0a13,13 0 1,0 -26,0" />
+
+    <group android:translateX="55" android:translateY="57"
+        android:scaleX="0.92" android:scaleY="0.92">
+        <path android:strokeColor="#1E1A2B" android:strokeWidth="2"
+            android:strokeLineCap="round" android:strokeLineJoin="round"
+            android:pathData="M12,7v14M3,18a1,1 0 0,1 -1,-1V4a1,1 0 0,1 1,-1h5a4,4 0 0,1 4,4a4,4 0 0,1 4,-4h5a1,1 0 0,1 1,1v13a1,1 0 0,1 -1,1h-6a3,3 0 0,0 -3,3a3,3 0 0,0 -3,-3z" />
+    </group>
 </vector>

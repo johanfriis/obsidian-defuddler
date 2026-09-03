@@ -164,7 +164,7 @@ Filled in as gates are passed. Empty = not reached.
 |---|---|---|---|
 | G0 | Does `obsidian://new` + `&clipboard` work on the Find N6? What is the reliable `content=` size limit? Is the vendored reader viable in a WebView? | **CLOSED — passed.** Spikes A and B both pass; the reader renders on all four test pages. Both trade-offs signed off by Johan → D20 (inline CSS) and D21 (Trusted Types). M0 ends here per D22. **Next: M1.** | A: 2026-08-31, B: 2026-08-31, closed: 2026-08-31 |
 | G1 | Is reader parity good enough to build on (vs. reworking Layer B)? | **CLOSED — passed.** Johan read real articles on the Find N6 and ruled the reader good enough to build on. Layer B stays as designed; D26's rework path (render into a separate document) stays dormant unless real reading shows extraction timing recurring. Three M1 acceptance boxes were still unticked at the gate (the three apps' own share sheets, the transcript on device since B3, cookies against a real login) — carried into M2's device work as background checks, Johan's call. **Next: M2.** | 2026-09-01 |
-| G2 | v1 ship review: app name + icon chosen; post-v1 order reconfirmed | **Name chosen: "Obsidian Reader"** (2026-09-03) — D34's territory, and not a name that was available while D15 stood. The `(dev)` suffix went with it: it lived in `app_name` alone, with no debug `applicationIdSuffix` behind it. **Icon still open.** | name: 2026-09-03 |
+| G2 | v1 ship review: app name + icon chosen; post-v1 order reconfirmed | **Name chosen: "Obsidian Reader"** (2026-09-03) — D34's territory, and not a name that was available while D15 stood. The `(dev)` suffix went with it: it lived in `app_name` alone, with no debug `applicationIdSuffix` behind it. **Icon done the same day:** upstream's three-facet gem in lilac on near-black, with a book badge overlapping its lower-right corner — deliberately the inverse of `md.obsidian`'s own icon, which sits on the same home screen. **What remains of this gate is the D5 reconfirmation, which is Johan's.** | name + icon: 2026-09-03 |
 
 ### G0 / Spike A findings — 2026-08-31, Find N6 (CPH2765), Android 16 / API 36, vault `Sanctum`
 
@@ -1167,8 +1167,8 @@ real page. **There is no template store, no importer, no management UI and no ed
 
 - [ ] **GATE G2 (Johan):** choose app name + icon — taste only, no branding constraint (D34);
   reconfirm post-v1 order (D5).
-- [ ] Set the real icon and versionName `1.0`. *App label done 2026-09-03 ("Obsidian Reader");
-  `applicationId` `it.slowmail.obsidianreader` stands.*
+- [ ] Set versionName `1.0`. *App label and icon done 2026-09-03; `applicationId`
+  `it.slowmail.obsidianreader` stands.*
 - [ ] Release keystore generated and backed up; signing config reads credentials from
   `local.properties`/env so it works identically on macOS and Windows.
 - [ ] R8/proguard: keep rules for `@JavascriptInterface` members; release build tested on device —
