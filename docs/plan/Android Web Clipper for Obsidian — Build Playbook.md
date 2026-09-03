@@ -65,9 +65,9 @@ Bumping either pin follows the procedure in §14 — never casually.
   1. **M2.3's failure half.** The happy path is done; what is unproven is D2's promise that a failed
      save is *reported*, never silently rerouted. Upstream's `tryClipboardWrite` does reroute
      silently. On the device the clipboard path succeeds (§2), so this needs forcing.
-  2. **M2.7's two remaining gaps.** `browser.commands.getAll` (settings' Hotkeys section throws
-     without it), and the reader dropdown's `copyMarkdownToClipboard` / `saveMarkdownToFile`, both
-     visible and neither routed.
+  2. **M2.7's remaining gap.** The reader dropdown's `copyMarkdownToClipboard` /
+     `saveMarkdownToFile`, both visible and neither routed. (`browser.commands.getAll` closed on
+     2026-09-03 — the Hotkeys section was deleted rather than the API stubbed.)
   3. **M3** — mostly verification now, not building; the template editor already works (§9).
   4. **M4.3** — the only real remainder of M4: wiring highlights into `clip()` so `{{highlights}}`
      populates a note. D8's in-session rule is now a *choice*, not a saving; decide it here.
@@ -1025,7 +1025,16 @@ The Kotlin here is plumbing; the clipper is upstream's.
 
 - **M2.7 — Shim and routing gaps still open.** `storage.onChanged` and `runtime.onUpdateAvailable`
   were fixed at M2.0/M2.1.
-  - `browser.commands.getAll` — settings' Hotkeys section throws without it.
+  - ~~`browser.commands.getAll` — settings' Hotkeys section throws without it.~~ **CLOSED
+    (2026-09-03) by deleting the section, not by stubbing the API.** Johan's call, following D33:
+    there are no browser command shortcuts on Android, so the section could never list anything and
+    a `commands` stub would only ever answer with an empty list. `background.ts` now removes
+    `#hotkeys-subsection` before upstream's `DOMContentLoaded` handler runs; that takes
+    `#keyboard-shortcuts-list` with it, and upstream's own `if (!shortcutsList) return`
+    (`general-settings.ts` ~L299) skips the routine — so the section goes *and* the TypeError goes.
+    Verified on the Find N6: Vaults now runs straight into Behavior, and the settings page loads
+    with a clean console. **`REMOVED_CONTROLS` is a second mechanism beside `UNSUPPORTED_CONTROLS`**
+    — `display:none` is not enough where upstream guards on an element's presence.
   - ~~`getHighlighterMode` returns undefined~~ **FIXED — and the fix collapsed most of M4. See §11.**
     The cause was routing, not missing state: `content.ts`'s handler for it answers by *asking the
     background* (content.ts ~L316), because upstream keeps highlighter mode in its background per

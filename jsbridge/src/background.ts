@@ -111,10 +111,29 @@ const seen = new Set<string>();
  */
 const UNSUPPORTED_CONTROLS = ['embedded-mode'];
 
+/**
+ * Controls that must not merely be hidden but *gone*, because upstream guards on their presence.
+ *
+ * Only one: settings' Hotkeys section. There are no browser command shortcuts on Android, so the
+ * section could never list anything — and `browser.commands` is the one member of the extension API
+ * the shim does not implement, so `getCommands()` (`utils/hotkeys.ts` ~L20) threw a TypeError on
+ * every load of the page. Removing `#hotkeys-subsection` takes `#keyboard-shortcuts-list` with it,
+ * and upstream's own `if (!shortcutsList) return` (`general-settings.ts` ~L299) then skips the
+ * whole routine — so the section goes *and* the error goes, without a `commands` stub that would
+ * only ever answer with an empty list. D33's rule: get rid of what we cannot support.
+ *
+ * This runs before upstream's `DOMContentLoaded` handler because module scripts execute after the
+ * document is parsed but before that event fires, and `installBackground()` is imported first.
+ */
+const REMOVED_CONTROLS = ['hotkeys-subsection'];
+
 function hideUnsupportedControls(): void {
   for (const id of UNSUPPORTED_CONTROLS) {
     const el = document.getElementById(id);
     if (el) (el as HTMLElement).style.display = 'none';
+  }
+  for (const id of REMOVED_CONTROLS) {
+    document.getElementById(id)?.remove();
   }
 }
 
