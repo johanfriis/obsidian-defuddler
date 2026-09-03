@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
@@ -56,6 +57,17 @@ class SettingsActivity : ComponentActivity() {
                                 onPageEvent = { },
                             )
                             WebView(ctx).apply {
+                                // Compose measures an AndroidView child from its LayoutParams, and
+                                // a WebView defaults to WRAP_CONTENT, which reaches Chromium as an
+                                // unbounded height: `vh` units then resolve to **zero** while
+                                // `innerHeight` still reports the real number. Upstream sizes this
+                                // whole page with `height: 100vh` (settings.scss ~L36), so every
+                                // container collapsed and the page painted its background and
+                                // nothing else.
+                                layoutParams = ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                )
                                 @SuppressLint("SetJavaScriptEnabled")
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true

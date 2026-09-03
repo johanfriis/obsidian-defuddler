@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.widget.Toast
@@ -47,6 +48,15 @@ fun ClipSheet(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
             factory = { ctx ->
                 WebView(ctx).apply {
+                    // Same reason as SettingsActivity: without explicit LayoutParams Compose
+                    // measures this WebView from its WRAP_CONTENT default, `vh` units resolve to
+                    // zero, and any page sized with `height: 100vh` collapses. The sheet itself
+                    // escaped that — upstream floors the popup at `max(540px, 100vh)` — but the
+                    // gear loads `settings.html` into *this* WebView, and that page has no floor.
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                    )
                     @SuppressLint("SetJavaScriptEnabled")
                     settings.javaScriptEnabled = true
                     // Upstream's pages are ordinary files on our own origin, so unlike the page

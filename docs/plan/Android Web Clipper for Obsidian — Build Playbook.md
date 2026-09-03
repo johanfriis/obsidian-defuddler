@@ -76,6 +76,10 @@ Bumping either pin follows the procedure in §14 — never casually.
   decided" — the only known fix for `flatten-shadow-dom.js` on GitHub), and confirming M2.5's skip
   against the Instagram fixture.
 
+  **The settings page worked as of 2026-09-03 (M2.8)** — it had rendered blank on the device since
+  it was built, and the cause was ours, not upstream's: a `WebView` inside a Compose `AndroidView`
+  with no explicit `LayoutParams` makes every `vh` unit resolve to zero.
+
   **Traps this session paid for, all recorded where they bit:** upstream's content script ends its
   listener with an unconditional `return true` and will swallow any message fed back to its own
   document (M2.2); `window.obsidianReaderInitialized` has two owners, so whichever runs second
@@ -1038,6 +1042,29 @@ The Kotlin here is plumbing; the clipper is upstream's.
   - The reader toolbar's clip dropdown offers `copyMarkdownToClipboard` and `saveMarkdownToFile`.
     Both are now visible and neither is routed; §16 assigns them to M2 and M6 respectively.
 
+- **M2.8 — The settings page rendered blank. FIXED (2026-09-03), verified on the Find N6.** Both
+  doors — the launcher's *Settings and templates* and the clip sheet's gear — showed an empty page.
+  The DOM was complete the whole time (1820 characters of text, every section built, the stored
+  template read back); what was zero was the layout.
+  - **Compose measures an `AndroidView` child from the child's own `LayoutParams`, and `WebView`
+    defaults to `WRAP_CONTENT`.** Chromium takes that as an unbounded height, so **every vertical
+    viewport unit resolves to 0** — `vh`, `dvh`, `svh`, `lvh` alike — while `innerHeight` still
+    reports the true 758. `100vw` stayed correct, which is what made it findable. `Modifier.fillMaxSize()`
+    sizes the composable, not the view: the fix is an explicit
+    `ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)` in each factory.
+  - **Why settings and not the sheet.** Upstream sizes settings with `#settings { height: 100vh }`
+    (settings.scss ~L36) and the popup with `max(var(--chromium-popup-height), 100vh)`, where that
+    variable is `540px`. The floor saved the sheet. Both WebViews carried the defect all along —
+    the sheet's surfaced only through its gear, which loads `settings.html` into that same WebView.
+  - **A wrong first fix, recorded so it is not retried:** `useWideViewPort` + `loadWithOverviewMode`,
+    which `ReaderActivity` sets for real pages, changed nothing. This is not the viewport meta.
+  - **`commands.getAll` was the wrong suspect.** It does throw on this page, but un-awaited inside a
+    detached chain (`general-settings.ts` ~L221), so it only leaves the Hotkeys list empty. The same
+    assets rendered fine in a desktop browser, which is what ruled it out.
+  - Diagnosis ran through the DevTools protocol over `adb forward` — a blank page with one unrelated
+    console error says nothing by itself. `setWebContentsDebuggingEnabled` is called only in
+    `ReaderActivity`, so that socket exists only once a reader has run in the process.
+
 ### Open, not decided
 
 - **CSP stripping on the page WebView.** Intercept the main document in `shouldInterceptRequest`, refetch
@@ -1067,6 +1094,8 @@ The Kotlin here is plumbing; the clipper is upstream's.
   saved instance state (G0 landmine).
 - [ ] Second clip started from the share sheet while Obsidian is foregrounded works (round-trip focus).
 - [ ] `settings.html` opens from the sheet and its Reader/Properties sections work against the shim.
+  *Opening is done — 2026-09-03, from both doors, after M2.8. The sidebar, the template list and the
+  template editor all render on the device. Section-by-section behaviour is still unexercised.*
 - [ ] Carried from M1 through G1 (§7): sharing from Chrome's, Firefox's and the YouTube app's own share
   sheets; the YouTube transcript in reader on device; cookies surviving a relaunch against a real login.
   Observe opportunistically during M2's device work.
