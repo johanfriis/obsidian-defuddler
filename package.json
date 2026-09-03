@@ -1,0 +1,24 @@
+{
+  "name": "defuddler",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Obsidian plugin: clip a URL through Defuddle into a template kept in the vault.",
+  "scripts": {
+    "build": "node esbuild.config.mjs --prod",
+    "dev": "node esbuild.config.mjs --watch",
+    "test": "vitest run",
+    "typecheck": "node typecheck.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.0.1",
+    "obsidian": "^1.13.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  },
+  "dependencies": {
+    "dayjs": "^1.11.23",
+    "defuddle": "0.19.3"
+  }
+}

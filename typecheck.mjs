@@ -1,15 +1,13 @@
-// Typechecks our code, not upstream's (playbook D31, §14).
+// Typechecks our code, not upstream's.
 //
-// The vendored submodule is a pinned *build input*: it has its own tsconfig, its own `types`, and
+// The vendored submodule is a pinned *build input*: it has its own tsconfig, its own `types` and
 // its own CI, and esbuild strips its types without checking them. It does not pass under our
-// options — the same reason `noImplicitAny` is already off in tsconfig.json. `exclude` cannot
-// express this, because tsc still checks any file reachable by import from an included one, and
-// D31 put upstream's UI pages in our entry graph.
+// options, and it does not have to. `exclude` cannot express this, because tsc still checks any
+// file reachable by import from an included one, and src/clip.ts imports upstream's api.ts by
+// design (playbook P3).
 //
-// So: run tsc, report diagnostics from our files, ignore the submodule's. A real fault in our code
-// still surfaces, because our files are where we would write it.
-//
-// Node rather than a shell pipeline, because both macOS and Windows are first-class (D6).
+// So: run tsc, report diagnostics from our files, count the submodule's and move on. A real fault
+// in our code still surfaces, because our files are where we would write it.
 
 import { spawnSync } from 'node:child_process';
 

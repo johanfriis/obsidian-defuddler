@@ -1,3 +1,3 @@
-[submodule "jsbridge/vendor/obsidian-clipper"]
-	path = jsbridge/vendor/obsidian-clipper
+[submodule "vendor/obsidian-clipper"]
+	path = vendor/obsidian-clipper
 	url = https://github.com/obsidianmd/obsidian-clipper

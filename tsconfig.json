@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    // Mirrors the esbuild alias so tsc resolves the module the same way the build does. Upstream's
+    // api.ts reaches webextension-polyfill transitively; see the playbook's §3, fact 1.
+    "paths": {
+      "webextension-polyfill": ["./vendor/obsidian-clipper/src/utils/cli-stubs.ts"]
+    },
+    "strict": true,
+    // Off only because the vendored submodule is a build input, not our code, and it has implicit
+    // anys. Everything under main.ts, src/ and test/ is still strict.
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "types": ["node"],
+    "lib": ["ES2022", "DOM"],
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["main.ts", "src", "test", "esbuild.config.mjs", "typecheck.mjs"]
+}

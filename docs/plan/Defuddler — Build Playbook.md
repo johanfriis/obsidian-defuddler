@@ -20,7 +20,8 @@ through the vault API and not through a URI.
 |---|---|---|
 | `obsidianmd/obsidian-clipper` | commit `9aa509b8f2801b08d974fb59f026df6f9a12e496` (main, 2026-08-03, "Bump deps") | MIT. Not on npm → consumed as the git submodule at `jsbridge/vendor/obsidian-clipper`. |
 | `defuddle` | `0.19.3` | MIT. Upstream declares `^0.19.2`. |
-| Obsidian | `1.8.10` on this machine (insider) | `minAppVersion` starts at `1.8.0`. See P5 for why the declarative settings API is not used. |
+| Obsidian | `1.14.0` on this machine (insider) | The app self-updates its asar without touching `Info.plist`, so the bundle reports a stale `1.8.10` — read `~/Library/Application Support/obsidian/obsidian-*.asar` for the truth. `minAppVersion` is `1.13.0`; see P5. |
+| `obsidian` npm types | `1.13.1` (latest published) | Behind the insider app, which is normal and harmless. |
 
 Bumping either pin runs the extraction harness first (§14) — never casually.
 
@@ -37,9 +38,11 @@ Bumping either pin runs the extraction harness first (§14) — never casually.
   where superseded text might be wanted again, name the commit that holds it. The audience is the next
   agent session, which pays for every dead line it has to parse.
 - A fresh session reads §1 (decisions), §2 (gates), §3 (upstream ground truth), and its milestone.
-- **Where things stand (2026-09-03).** Nothing is built. `main` was cleared of the Android app at
-  `2c5e484`; `jsbridge/` and its submodule survive because they hold the engine and the extraction
-  fixtures. The next thing to do is Phase 0, then M0.
+- **Where things stand (2026-09-03).** **Phase 0 is done.** The plugin builds, typechecks, and the
+  inherited extraction harness passes from its new home; the build is symlinked into Sanctum. `main`
+  was cleared of the Android app at `2c5e484`, and Phase 0 folded `jsbridge/` into the repo root and
+  deleted it. Measurements are in §2. The next thing to do is M0, and its first spike (S1) is the one
+  that can still reopen P1.
 
 ## 1. Decisions log
 
@@ -65,7 +68,7 @@ nothing still opens the template picker).
 | **P2** | **Clipping happens inside Obsidian; notes are written with the vault API.** | This is the whole reason to pivot. It retires `D2`, `D18` and `D36` outright: no `obsidian://new`, no clipboard as transport, no size ceiling, no foregrounding, and `G0/A5`'s finding that Templater's on-create trigger does not fire is simply no longer true of us. **Cost, recorded honestly:** `D2` credited the URI with implementing dedup/append/overwrite for free. That credit is now a debt — those behaviours are ours to write (M4). |
 | **P3** | **Upstream's `src/api.ts` is the engine. We consume it; we do not fork it, and we ship none of its UI.** | `api.ts` is upstream's own environment-agnostic entry point: `clip({html, url, template, documentParser})` plus `matchTemplate()`. It is the entire clip pipeline with no `browser.*` in its import graph (§3 lists the 70 files it does pull). This is what makes the pivot cheap, and it is the opposite of `D31`, which hosted upstream's *extension* — that decision bought a UI and paid for it with the polyfill shim, two WebViews, a message router and bundle injection. Here we buy only the engine and build our own small UI, because Obsidian already gives us modals, settings and a command palette. |
 | **P4** | **Templates are markdown files in the vault, in a configurable folder. `matchTemplate()` preselects; the human confirms.** | In-vault means editable and syncable anywhere, with no separate store to keep in step. Preselect-don't-apply follows the governing principle, and matches `M3.3` in the old playbook. The file format is settled in **GATE G1** — markdown, with the note's frontmatter in a fenced block and its types taken from the vault. |
-| **P5** | **Settings live in Obsidian's settings tab, built with `display()` and `Setting`. All persisted state sits inside `plugin.settings`.** | Obsidian here is 1.8.10; the declarative `getSettingDefinitions()` API needs 1.13.0, which does not exist yet. `display()` is correct today and the migration is mechanical when 1.13 lands. The single-blob rule matters because Obsidian's auto-persist clobbers sibling keys written with `saveData()`. |
+| **P5** | **Settings live in Obsidian's settings tab, declared with `getSettingDefinitions()`. No `display()`. All persisted state sits inside `plugin.settings`.** | **Corrected in Phase 0, 2026-09-03.** This decision first read "built with `display()`", on the belief that Obsidian here was 1.8.10 and that the declarative API did not exist yet. Both halves were wrong: the version came from a stale `Info.plist`, and the machine is on 1.14.0. With `minAppVersion` at 1.13.0 the linter's rule is to implement the definitions and *delete* `display()`, since a non-empty definition list bypasses it anyway. The single-blob rule is unchanged and still matters, because Obsidian's auto-persist clobbers sibling keys written with `saveData()`. |
 | **P6** | **Distribution is BRAT only. No community-plugin submission.** | Personal tool, same call as `D34`. Consequence: the community scanner's Scorecard is *guidance*, not a gate. We follow its rules where they are cheap and right (no `fetch()`, sentence case, `registerDomEvent`, no `!important`) and skip the submission ceremony. If that ever changes, the name and the ESLint pass are the two things to revisit. |
 | **P7** | **The plugin is named Defuddler, id `defuddler`.** | Clears Obsidian's naming rules: no "Obsidian" in it, does not start with "Obsi", does not end with "dian". It does borrow kepano's library name, which reads faintly official — acceptable for a BRAT-only personal tool per P6, and a reason to rename before any submission. |
 | **P8** | **The clipboard is a prefill, never a requirement.** | `navigator.clipboard.readText()` is the shakiest API in this design on mobile: iOS WKWebView gates it behind a user gesture and can throw or prompt. So the command always opens a prompt with the URL field filled in when the read worked and empty when it didn't. This is `D36` learned from the other side — a clipboard failure must be visible and recoverable, not silent. |
@@ -74,6 +77,18 @@ nothing still opens the template picker).
 | **P11** | **The reader view is out of scope for v1.** | Option 2 from the pivot conversation. Its value is preview and highlight-to-clip, **not** better extraction, because its input is still the fetched HTML. Upstream's own reader is 2805 lines of `browser.runtime`/`browser.storage` and must not be ported — see §13. |
 
 ## 2. Gate outcomes
+
+### Phase 0 measurements — 2026-09-03, build machine
+
+| What | Value |
+|---|---|
+| `main.js`, minified, engine included | **831 KB** |
+| Predicted in §3 fact 2 before the build | ~820 KB |
+| Extraction harness | 6 tests, green, snapshots unmoved across the move and a vitest major bump |
+| Typecheck | clean in our code; 16 diagnostics inside `vendor/`, counted and ignored (they are upstream's, under a newer TypeScript than upstream targets) |
+
+831 KB is the number M0's S3 judges mobile startup against. The Defuddle dedupe is spent — it was
+worth 320 KB of a 1,151 KB build — so there is no easy lever left if the phone objects.
 
 ### GATE G0 — the de-risking spike — OPEN
 
@@ -242,51 +257,75 @@ Target layout after Phase 0:
 
 ```
 main.ts                 plugin entry: commands, protocol handler, lifecycle
-src/clip.ts             the pipeline above, one exported function
-src/fetch.ts            requestUrl wrapper: user-agent, redirects, errors
-src/templates.ts        load/watch the vault template folder, parse, validate
-src/save.ts             the six behaviours (M4)
-src/settings.ts         PluginSettingTab
-src/ui/                 URL prompt modal, template FuzzySuggestModal
-manifest.json  versions.json  esbuild.config.mjs  styles.css
-jsbridge/               kept: vendor submodule + extraction fixtures and tests
+src/clip.ts             the engine binding — built in Phase 0
+src/fetch.ts            requestUrl wrapper: user-agent, redirects, errors      (M1)
+src/templates.ts        load/watch the vault template folder, parse, validate  (M2)
+src/save.ts             the six behaviours                                     (M4)
+src/settings.ts         the settings definitions                               (M3)
+src/ui/                 URL prompt modal, template FuzzySuggestModal           (M1-M2)
+manifest.json  versions.json  styles.css
+esbuild.config.mjs      the build, and the two resolutions §3 depends on
+typecheck.mjs           tsc, minus the submodule's own diagnostics
+vitest.config.mts  test/extraction.test.ts  test/fixtures/  test/__snapshots__/
+vendor/obsidian-clipper the pinned submodule
 docs/plan/              this document
 docs/android/           the superseded Android playbook, until absorbed
 ```
 
-**`jsbridge/` is transitional.** Its `vendor/` submodule and `test/extraction.test.ts` +
-`test/fixtures/` transfer as-is and are the reason M0's best spike is cheap. Its Android entry points
-(`src/background.ts`, `src/bundle-entry.ts`, `src/ui-*-entry.ts`, `shim/browser.ts`) and its
-`build.mjs`, which still writes to the deleted `android/app/src/main/assets`, are dead. Phase 0
-folds what survives into the plugin's own build and deletes the rest **in one commit**, so the tree
-is never half-migrated.
+**`jsbridge/` is gone as of Phase 0.** Its submodule moved to `vendor/obsidian-clipper` and its
+extraction harness and fixtures moved to `test/`; both transferred unchanged and are the reason M0's
+best spike is cheap. Everything else it held was Android-only — the shim, the bundle entry points, the
+UI entries, and a `build.mjs` writing into a directory that no longer exists — and went with it, in
+the same commit, so the tree was never half-migrated. Upstream's own highlighter suites, which the
+old harness also ran, went too: they need the deleted shim and they guard a feature that P11 puts
+after v1.
 
 ## 5. Phase 0 — Bootstrap
 
 ### Tasks
 
+**Done 2026-09-03.** What it took, and the three things that did not go as written:
+
 1. Plugin skeleton at the repo root: `manifest.json` (`id: defuddler`, `name: Defuddler`,
-   `minAppVersion: 1.8.0`, **`isDesktopOnly: false`**), `versions.json`, `main.ts` that loads and
-   unloads cleanly and does nothing else.
-2. esbuild config producing `main.js`: external `obsidian`, ESM in / CJS out, `platform: browser`,
-   the `webextension-polyfill` → `cli-stubs.ts` alias from §3, `DEBUG_MODE: false`.
-3. Apply §3 fact 2 — import Defuddle from one entry point — and **record the resulting `main.js`
-   size in §2**. It is the number M0's mobile spike is judged against.
-4. Dev loop: symlink the build output into `/Users/box/Vaults/Sanctum/.obsidian/plugins/defuddler/`
-   so a rebuild plus Obsidian's reload is the whole cycle. A `just dev` recipe wrapping esbuild
-   watch.
-5. Move the extraction harness and fixtures out of `jsbridge/` into the plugin's own test setup,
-   delete the dead Android entry points and `build.mjs`, and update the justfile. One commit.
-6. GitHub Actions release workflow: on a tag, build and attach `main.js`, `manifest.json`,
-   `styles.css`. BRAT installs from release assets and the tag must equal the manifest version.
+   `minAppVersion: 1.13.0`, **`isDesktopOnly: false`**), `versions.json`, `main.ts`.
+2. esbuild config producing `main.js`: external `obsidian` and `electron`, CJS out,
+   `platform: browser`, the `webextension-polyfill` → `cli-stubs.ts` alias from §3,
+   `DEBUG_MODE: false`.
+3. §3 fact 2 applied, and the size recorded in §2.
+4. Dev loop: `just link` symlinks `main.js`, `manifest.json` and `styles.css` into
+   `/Users/box/Vaults/Sanctum/.obsidian/plugins/defuddler/`, so a rebuild plus Obsidian's reload is
+   the whole cycle. `just dev` watches.
+5. `jsbridge/` folded into the root and deleted, one commit (§4).
+6. GitHub Actions release workflow: on a tag, typecheck, test, build, and attach the three assets.
+   It refuses to build when the tag and `manifest.json`'s version disagree, because BRAT matches
+   them and a mismatch installs nothing with no useful error.
+
+**Three corrections Phase 0 forced, each recorded where it bit:**
+
+- **Obsidian here is 1.14.0, not the 1.8.10 its `Info.plist` claims** — see the pinned table and P5.
+  The app self-updates its asar and leaves the bundle's metadata behind, so the plist is a trap.
+- **`defuddle` cannot be deduped with esbuild's `alias`.** Alias substitutes *prefixes*, so aliasing
+  `defuddle` also rewrites `defuddle/full` into `defuddle/full/full`, which does not resolve. It
+  needs an `onResolve` plugin with an exact-match filter; the config says so at the seam.
+- **`"type": "module"` had to come off `package.json`.** We emit CommonJS, which is what Obsidian
+  loads, and the field makes Node read the emitted `main.js` as ESM. Obsidian is unaffected either
+  way, but every local tool that touches the artifact is not.
 
 ### Acceptance
 
-- [ ] Defuddler appears in Sanctum's community plugins list and toggles on and off with no console errors.
-- [ ] `just test` runs the inherited extraction tests, green, from their new home.
-- [ ] `just build` produces a `main.js` whose size is recorded in §2.
-- [ ] `jsbridge/` contains only the submodule, or is gone entirely.
-- [ ] A tagged push produces a release with the three assets attached.
+- [x] `just test` runs the inherited extraction tests, green, from their new home — 6 passed,
+      snapshots unmoved across both the move and a vitest major bump.
+- [x] `just build` produces a `main.js` whose size is recorded in §2 — 831 KB.
+- [x] `just check` is clean in our code.
+- [x] The built bundle loads as CommonJS and default-exports a class extending `Plugin`, verified
+      against a stub `obsidian` module.
+- [x] `jsbridge/` is gone entirely.
+- [x] `just doctor` passes on this machine.
+- [ ] **Needs Johan:** Defuddler appears in Sanctum's community plugins list and toggles on and off
+      with no console errors. The symlinks are in place; enabling a plugin is a UI action, and
+      editing `community-plugins.json` under a running Obsidian would be overwritten.
+- [ ] **Needs a push:** a tagged push produces a release with the three assets attached. Untested
+      until there is something worth tagging.
 
 ## 6. M0 — De-risking spike → GATE G0
 
@@ -407,9 +446,11 @@ vault in M2; this milestone is about the pipeline.
 
 ## 9. M3 — Settings
 
-`PluginSettingTab` with `display()` (P5), everything inside `plugin.settings`: template folder,
-default template, default output folder, whether to open the note after clipping, and the user-agent
-string. Sentence case throughout, `.setHeading()` for sections, no plugin name in the headings.
+A `PluginSettingTab` implementing `getSettingDefinitions()` and no `display()` (P5), everything
+inside `plugin.settings`: template folder, default template, default output folder, whether to open
+the note after clipping, and the user-agent string. Sentence case throughout, no plugin name in the
+headings. Re-render with `this.update()`, never `this.display()` — a non-empty definition list
+bypasses `display()` entirely.
 
 ### Acceptance
 
@@ -496,6 +537,7 @@ whichever vault was last used, so anything generating these links should carry t
 | ~820 KB of `main.js` slows Obsidian mobile's startup | Measured in Phase 0 and again in S3; the Defuddle dedupe is the only easy lever and it is already spent | Open until G0 |
 | Daily-note resolution needs semi-private API | S4 settles it; a clear failure message is the floor | Open until G0 |
 | Server HTML is empty for SPA-only pages | P10 — a note with frontmatter and no body is a valid outcome, and §13's rendered source is the real answer if it becomes common | Accepted |
+| Obsidian on the phone is below 1.13, so declarative settings render nothing | `minAppVersion` is 1.13.0 and the desktop is on 1.14.0, but the phone's version is unverified. S3 checks it. If it is behind, the fix is to update the phone, not to re-add `display()` | Open until G0 |
 | Reading the vault's property types reaches into the config directory, whose file shape is undocumented | Resolve the path through `app.vault.configDir`, never a hardcoded `.obsidian`, and treat any failure as "no types" — the quoted-text default is valid YAML, so the failure is a downgrade, not a break | Accepted |
 | Upstream changes `api.ts`'s signature | It is a young, deliberately public entry point; the harness catches behaviour changes, not signature changes, so a submodule bump reads its diff | Accepted |
 

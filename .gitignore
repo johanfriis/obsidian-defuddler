@@ -5,16 +5,11 @@
 node_modules/
 npm-debug.log*
 
-# Android / Gradle
-android/.gradle/
-android/build/
-android/*/build/
-local.properties
-android/.idea/
-android/*.iml
-android/.kotlin/
-*.apk
-*.aab
+# Build output. main.js is a release asset, attached to the GitHub release, never committed.
+main.js
+main.js.map
+*.tgz
+.tmp/
 
 # IDE
 .vscode/
@@ -24,8 +19,6 @@ android/.kotlin/
 .env
 .env.*
 
-# jsbridge build byproducts (the bundle itself IS committed — see playbook §14)
-jsbridge/build-meta.json
-
-# Scratch bundle the jsbridge tests build into (never the committed asset).
-jsbridge/.tmp/
+# Android build outputs. The app itself lives on the android-reader branch; what is left here is
+# untracked Gradle and SDK state, kept so a branch switch does not rebuild 84 MB from scratch.
+android/
