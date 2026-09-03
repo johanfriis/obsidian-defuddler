@@ -64,7 +64,7 @@ nothing still opens the template picker).
 | **P1** | **One source: fetch the URL with `requestUrl()`. No webview, no iframe, on any platform.** | The premise that mobile needs a rendered DOM does not survive the evidence already in this repo. `jsbridge/test/fixtures/` are `curl` captures — server bytes, no JavaScript ever executed — and `extraction.test.ts` passes against them: stephango 13,584 chars with title/author/1400+ words, github 6,328, apnews 3,901, youtube 2,780 **including the full transcript**, instagram nothing. Four of five, and the transcript survives because Defuddle's `YoutubeExtractor` reads inline player JSON rather than the rendered page. The rendered DOM buys exactly one measured thing: github's shadow DOM. That is not worth a second code path in v1. Reversible and *additive* — see P2's note and §13. |
 | **P2** | **Clipping happens inside Obsidian; notes are written with the vault API.** | This is the whole reason to pivot. It retires `D2`, `D18` and `D36` outright: no `obsidian://new`, no clipboard as transport, no size ceiling, no foregrounding, and `G0/A5`'s finding that Templater's on-create trigger does not fire is simply no longer true of us. **Cost, recorded honestly:** `D2` credited the URI with implementing dedup/append/overwrite for free. That credit is now a debt — those behaviours are ours to write (M4). |
 | **P3** | **Upstream's `src/api.ts` is the engine. We consume it; we do not fork it, and we ship none of its UI.** | `api.ts` is upstream's own environment-agnostic entry point: `clip({html, url, template, documentParser})` plus `matchTemplate()`. It is the entire clip pipeline with no `browser.*` in its import graph (§3 lists the 70 files it does pull). This is what makes the pivot cheap, and it is the opposite of `D31`, which hosted upstream's *extension* — that decision bought a UI and paid for it with the polyfill shim, two WebViews, a message router and bundle injection. Here we buy only the engine and build our own small UI, because Obsidian already gives us modals, settings and a command palette. |
-| **P4** | **Templates are files in the vault, in a configurable folder. `matchTemplate()` preselects; the human confirms.** | In-vault means editable and syncable anywhere, with no separate store to keep in step. Preselect-don't-apply follows the governing principle, and matches `M3.3` in the old playbook. **Format is not decided — see GATE G1.** |
+| **P4** | **Templates are markdown files in the vault, in a configurable folder. `matchTemplate()` preselects; the human confirms.** | In-vault means editable and syncable anywhere, with no separate store to keep in step. Preselect-don't-apply follows the governing principle, and matches `M3.3` in the old playbook. The file format is settled in **GATE G1** — markdown, with the note's frontmatter in a fenced block and its types taken from the vault. |
 | **P5** | **Settings live in Obsidian's settings tab, built with `display()` and `Setting`. All persisted state sits inside `plugin.settings`.** | Obsidian here is 1.8.10; the declarative `getSettingDefinitions()` API needs 1.13.0, which does not exist yet. `display()` is correct today and the migration is mechanical when 1.13 lands. The single-blob rule matters because Obsidian's auto-persist clobbers sibling keys written with `saveData()`. |
 | **P6** | **Distribution is BRAT only. No community-plugin submission.** | Personal tool, same call as `D34`. Consequence: the community scanner's Scorecard is *guidance*, not a gate. We follow its rules where they are cheap and right (no `fetch()`, sentence case, `registerDomEvent`, no `!important`) and skip the submission ceremony. If that ever changes, the name and the ESLint pass are the two things to revisit. |
 | **P7** | **The plugin is named Defuddler, id `defuddler`.** | Clears Obsidian's naming rules: no "Obsidian" in it, does not start with "Obsi", does not end with "dian". It does borrow kepano's library name, which reads faintly official — acceptable for a BRAT-only personal tool per P6, and a reason to rename before any submission. |
@@ -80,21 +80,74 @@ nothing still opens the template picker).
 Closes at the end of M0 (§6). Passing means the pipeline is proven on both platforms and the numbers
 are written into §2. Failing on the fixture-parity spike (S1) is the one result that would reopen P1.
 
-### GATE G1 — template file format — OPEN
+### GATE G1 — template file format — CLOSED (2026-09-03)
 
-Decided before M2 starts, because it is expensive to change once templates exist.
+**Decided by Johan.** A template is a markdown file. Its own frontmatter is the template *config*; the
+first fenced block is the note's frontmatter; everything after that block is the note's body. Property
+*types* are not written in the template at all — they come from the vault.
 
-- **Option A — JSON, one file per template (recommended).** Upstream's `Template` interface verbatim
-  (§3), so web-clipper exports import unchanged and there is zero mapping code between the file and
-  what `clip()` takes. Templates are inert files that Obsidian will not try to interpret.
-- **Option B — Markdown, frontmatter as properties, body as `noteContentFormat`.** More native to
-  edit, and the obvious thing to reach for. It bites in three places: the frontmatter is *real*
-  frontmatter, so every `{{title}}` placeholder enters the vault's property index and the graph; the
-  properties UI will reformat values it thinks it understands; and it needs a mapper in both
-  directions that Option A does not.
+````markdown
+---
+name: Article
+behavior: create
+path: Clippings
+noteNameFormat: "{{title}}"
+triggers:
+  - https://apnews.com/
+---
 
-**Recommendation: A.** B's editing comfort is real but is bought with vault pollution and a mapper,
-and A keeps the door open to importing Johan's existing web-clipper templates on day one.
+## Template
+
+```
+title: {{title}}
+author: {{author}}
+source: {{url}}
+published: {{published|date:"YYYY-MM-DD"}}
+tags: {{schema:@Article:keywords}}
+```
+
+{{content}}
+````
+
+**Parsing rules.** The first fenced block in the file is the properties; anything before it is
+decoration and is ignored, so a `## Template` heading or a note-to-self is free. Everything after that
+block is `noteContentFormat`. A file with no fence has no properties and is all body.
+
+**Split each property line on its first colon. Do not run a YAML parser over the block.** It is a
+template *for* YAML, not YAML: `published: {{published|date:"YYYY-MM-DD"}}` is not a valid bare YAML
+scalar, because the leading brace opens a flow mapping. Parsing it as YAML would force every
+placeholder to be quoted, and a forgotten quote would misparse in silence. The fence therefore carries
+no language tag, so nobody is invited to treat it as YAML.
+
+**Why types come from the vault.** `generateFrontmatter()` emits a different YAML *shape* per type
+(§3, fact 5): `multitext` becomes a real list, `number` is parsed, `checkbox` is a bare boolean, dates
+go out unquoted, and everything else is double-quoted with its quotes escaped. A literal fenced block
+cannot say which is which, so untyped properties all fall to the quoted-text default — valid YAML, but
+`tags` as a string and dates as strings, which are the two properties that most want typing.
+
+`clip()` takes `propertyTypes` as an option and merges it **over** the template's own types (§3, fact
+5), so the types can come from outside the template entirely. Read them from the vault's property
+configuration. Sanctum already types `tags`, `created`, `year` and `genre` there, and Obsidian's own
+vocabulary uses the word `multitext` — the same word upstream uses — so the mapping is two aliases
+(`tags` and `aliases` behave as lists) and nothing else. Types then live in the one place they are
+already configured, rather than being restated in every template.
+
+**What this beats, and what it costs.**
+
+- Beats **JSON**, the format recommended here before Johan proposed the fence: the body is the part
+  that is actually edited, and it is markdown, so it should be edited as markdown.
+- Beats **plain markdown with the properties in the file's own frontmatter**: that shape puts
+  `{{title}}`, `{{author}}` and `{{url}}` — the content property names Johan actually queries with
+  Datacore — into the vault's property index with placeholder values. This shape does not.
+- **Costs** a converter for web-clipper JSON exports, where the JSON format needed only a file copy.
+  Upstream's field names are used verbatim in the config frontmatter to keep that converter close to a
+  rename-free copy.
+- **Costs** per-template type overrides, which are given up in favour of the vault's single answer. Two
+  templates wanting different types for the same property name is a case that has not come up.
+- **Residual pollution, accepted:** the five config keys (`name`, `behavior`, `path`,
+  `noteNameFormat`, `triggers`) do enter the property index. `name` is the only one generic enough to
+  collide with a real content property. Templates live in their own folder, so a query can exclude
+  them; that is the mitigation and it is the same one any template folder needs.
 
 ### GATE G2 — v1 release — OPEN
 
@@ -123,7 +176,7 @@ interface DocumentParser { parseFromString(html: string, mimeType: string): any 
 compiles the note name, the properties and the body, and generates the frontmatter. `fullContent` is
 frontmatter + body, ready to write. Our `DocumentParser` is one line: `new DOMParser()`.
 
-**Four integration facts that will otherwise cost a session each:**
+**Five integration facts that will otherwise cost a session each:**
 
 1. **`api.ts` transitively imports `webextension-polyfill`** (via `storage-utils.ts` →
    `browser-polyfill.ts`). Upstream's own API build aliases it to `src/utils/cli-stubs.ts`; our
@@ -139,8 +192,16 @@ frontmatter + body, ready to write. Our `DocumentParser` is one line: `new DOMPa
 4. **`saveToObsidian()` in `src/utils/obsidian-note-creator.ts` is what we replace.** Reading it is
    the fastest way to see the debt P2 names: it delegates `append`, `prepend`, `overwrite` and daily
    notes to the URI's query parameters. Our M4 implements all of them against the vault API.
+5. **Property types decide the YAML shape, and `clip()` lets us supply them out of band.**
+   `generateFrontmatter()` in `src/utils/shared.ts` switches on the type: `multitext` emits a real
+   YAML list, `number` strips non-numerics and parses, `checkbox` emits a bare boolean, `date` and
+   `datetime` go out unquoted, and the default quotes the value and escapes its quotes. `clip()`
+   builds its type map from `template.properties[].type` and then does `Object.assign(typeMap,
+   propertyTypes)` — **the caller's map wins**. That precedence is what lets G1 keep types out of the
+   template file and read them from the vault instead.
 
-**The types we persist** (`src/types/types.ts`, verbatim — G1 Option A is this shape on disk):
+**The in-memory shape a template must parse into** (`src/types/types.ts`, verbatim). G1 decides how
+it is *written* on disk; this is what `clip()` is handed:
 
 ```ts
 interface Template {
@@ -308,19 +369,27 @@ vault in M2; this milestone is about the pipeline.
 - [ ] A non-URL on the clipboard opens the prompt rather than failing.
 - [ ] Templater's on-create trigger fires on the created note.
 
-## 8. M2 — Templates in the vault — GATE G1 decides the format first
+## 8. M2 — Templates in the vault
 
 ### Tasks
 
 1. Setting: template folder path, defaulting to something under the vault root.
-2. Load every template file in that folder at startup, validate against the `Template` shape, and
-   report a bad file by name without preventing the others from loading.
-3. Reload on vault changes to that folder, via `registerEvent` on the vault's modify/create/delete.
-4. `FuzzySuggestModal` listing templates by name, with `matchTemplate()`'s answer preselected and the
+2. Parse the G1 format: the file's frontmatter into the `Template` config fields, the first fenced
+   block into `Property[]` by **splitting each line on its first colon**, and the text after that
+   block into `noteContentFormat`. No YAML parser touches the fence — G1 says why.
+3. Read the vault's property types and pass them to `clip()` as `propertyTypes` (§3, fact 5). Resolve
+   the config directory through `app.vault.configDir` rather than hardcoding `.obsidian`. Map
+   Obsidian's `tags` and `aliases` to `multitext`; every other name already matches upstream's.
+   **If the file is missing or unreadable, fall back to no types** — the default branch emits quoted
+   text, which is valid YAML, so this degrades rather than breaks.
+4. Load every template in the folder at startup, validate, and report a bad file by name without
+   preventing the others from loading.
+5. Reload on vault changes to that folder, via `registerEvent` on the vault's modify/create/delete.
+6. `FuzzySuggestModal` listing templates by name, with `matchTemplate()`'s answer preselected and the
    reason it matched visible (P4, governing principle).
-5. Import path for web-clipper JSON exports — with G1 Option A this is a file copy and a validation,
-   which is most of the argument for A.
-6. A default template written to the folder on first run if it is empty, so the plugin is usable
+7. A converter command for web-clipper JSON exports: read the export, write a G1 markdown template.
+   Upstream's field names are reused verbatim in the config frontmatter to keep this close to a rename.
+8. A default template written to the folder on first run if it is empty, so the plugin is usable
    before any authoring.
 
 ### Acceptance
@@ -328,7 +397,13 @@ vault in M2; this milestone is about the pipeline.
 - [ ] Templates authored in the vault appear in the picker without restarting Obsidian.
 - [ ] A malformed template names itself in a `Notice` and does not take the others down.
 - [ ] A template with a URL trigger is preselected for a matching URL and not for a non-matching one.
-- [ ] An unmodified web-clipper export loads and clips.
+- [ ] A placeholder in the fence needs no quoting: `published: {{published|date:"YYYY-MM-DD"}}` written
+      bare produces a correct date property.
+- [ ] `tags` lands as a real YAML list purely because the vault types it that way, with the template
+      saying nothing about types.
+- [ ] A title containing a colon and a double quote produces valid frontmatter.
+- [ ] With the vault's type file removed, clipping still succeeds and every property is quoted text.
+- [ ] A web-clipper JSON export converts to a template file that clips.
 
 ## 9. M3 — Settings
 
@@ -421,6 +496,7 @@ whichever vault was last used, so anything generating these links should carry t
 | ~820 KB of `main.js` slows Obsidian mobile's startup | Measured in Phase 0 and again in S3; the Defuddle dedupe is the only easy lever and it is already spent | Open until G0 |
 | Daily-note resolution needs semi-private API | S4 settles it; a clear failure message is the floor | Open until G0 |
 | Server HTML is empty for SPA-only pages | P10 — a note with frontmatter and no body is a valid outcome, and §13's rendered source is the real answer if it becomes common | Accepted |
+| Reading the vault's property types reaches into the config directory, whose file shape is undocumented | Resolve the path through `app.vault.configDir`, never a hardcoded `.obsidian`, and treat any failure as "no types" — the quoted-text default is valid YAML, so the failure is a downgrade, not a break | Accepted |
 | Upstream changes `api.ts`'s signature | It is a young, deliberately public entry point; the harness catches behaviour changes, not signature changes, so a submodule bump reads its diff | Accepted |
 
 ## 16. Licensing
