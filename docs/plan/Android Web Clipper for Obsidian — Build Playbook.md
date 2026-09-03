@@ -47,7 +47,8 @@ Bumping either pin follows the procedure in §14 — never casually.
   UI Reference is where every "screenshot N" reference resolves.
 - **Where things stand (end of 2026-09-01). M0, M1 and most of M2 are built; G0 and G1 are CLOSED —
   passed. The happy path works on the Find N6 end to end:** share a link → the page opens → tap the
-  `Reader` FAB → tap the `Clip` FAB (or the reader toolbar's Obsidian button) → upstream's clip sheet
+  FAB → tap `Reader` → tap the FAB again → tap `Clip` (or, from inside the reader, the toolbar's
+  own Obsidian button) → upstream's clip sheet
   populates from the live page → *Add to Obsidian* → the note lands in the vault with typed
   properties and a markdown body, and the sheet closes itself. **That is v1's definition of done for
   the happy path.** The highlighter works too (M2.7).
@@ -56,7 +57,8 @@ Bumping either pin follows the procedure in §14 — never casually.
   it.** The app *hosts upstream's extension* rather than reimplementing its UI: two WebViews, the
   shim as the extension runtime, upstream's own popup, settings page and template editor. It reversed
   what §8 and §9 used to say, retired D16 and D27, and narrowed D14 and D20. Then **D32** (the reader
-  stays in the page WebView) and **D33** (two mini FABs; no shell bar, no `Reload`, no setup screen).
+  stays in the page WebView), **D33** (no shell bar, no `Reload`, no setup screen) and **D35** (one
+  FAB opening a two-item menu, replacing D33's pair).
 
   **What is left, in the order I would take it — all of it is in §8's task list with detail:**
 
@@ -150,8 +152,9 @@ everything else was decided by Johan explicitly.
 | D30 | **Template behaviour flags are executed as written — `overwrite=true` replaces the existing note, no existence check, no confirmation** | Johan's call, 2026-09-01, closing M2.3's open question. A template is a standing human decision: its creator chose that modality for a reason (and importing one is adopting it — M3.2), so it is respected, not continually challenged. This *is* the governing principle rather than an exception — deciding in advance is still the human deciding; see the principle's note above. Safety context from A4: the no-flag default de-duplicates (`note 1.md` beside `note.md`), so replacement only ever happens where a template explicitly asks for it. |
 | D31 | **The app hosts upstream's extension; it does not reimplement its UI.** Two WebViews — the page WebView as today, plus a UI WebView on a `WebViewAssetLoader` origin serving upstream's own `popup.html` / `side-panel.html` / `settings.html`. The shim becomes the extension runtime | Johan's call, 2026-09-01, at the M2 planning review: *"if I could have the Obsidian Web Clipper in an android app, then I would be happy"*. §8 previously had M2.2 building a Compose `ModalBottomSheet` and M2.3 porting the save recipe by hand — **both reimplement code the submodule already contains.** `src/popup.html` + `src/core/popup.ts` *is* screenshot 3, element for element; `src/utils/obsidian-note-creator.ts` *is* §3's save recipe, which §3 already told us to mirror rather than improvise. **M2.0's spike (§2) brought the clip sheet, the save path, the settings page and the template editor up against our shim with zero changes to upstream source.** The mapping is direct: content script → page WebView (already how M1 works); popup/settings → UI WebView on our origin (the `chrome-extension://` analogue); `browser.storage`/`i18n`/`runtime` → the shim (already built); `browser.tabs` → trivial, there is exactly one tab and Kotlin owns it; `obsidian://` → `shouldOverrideUrlLoading` → `startActivity`. **Upstream's `background.ts` is NOT ported** — 1109 lines of browser-chrome management (context menus, tab lifecycle, `webRequest`, `action.setPopup`) that a single-tab app has no use for. We write a small responder for the ~15 actions the clip and settings paths actually send. That is B1's one-alias shim move, one layer up. Kotlin shrinks to: share intent, two WebViews, message routing, intent dispatch, first-run vault name. **Retires D16 and D27's tap-only rule; narrows D14 and D20; weakens D8. Accepted cost, eyes open: a submodule bump can break upstream UI nothing tests (D14), and we inherit upstream features wholesale rather than picking them.** |
 | D32 | **Reader stays in the page WebView.** It is not moved to the UI origin, and there is no second reader implementation | Johan's call, 2026-09-01: *"if possible, don't fork the reader"*. Upstream's `reader-page` / `core/reader-view.ts` entry would render the reader as its own document — the architecture D26 describes as the dormant Layer B rework, which would make re-extract buildable. Tempting, but the injected reader works, G1 passed on it, and moving it doubles D31's blast radius. **One implementation, where it is.** Revisit only after the UI WebView lands; if it lands well, D26's rework becomes cheap rather than speculative. |
-| D33 | **Chrome is two mini FABs — `Reader` and `Clip`, bottom right. No shell bar, no `Reload`, and no setup screen** | Johan's call, 2026-09-01, once D31 made upstream's UI the control surface. Three deletions and one keep. **`Reload` retired:** toggling the reader off already ends in `window.location.reload()`, so D26's recovery is "toggle off, wait, toggle on", and a page that fails outright still gets the error pane's Retry — what remained was a permanent button for "the raw page rendered wrong". **Pull-to-refresh was considered and rejected**: `SwipeRefreshLayout` around a WebView fights the page's own scroll and any site with its own gesture, and a recovery action should not be gesture-dependent. **M2.4's setup screen deleted:** `saveToObsidian` omits `&vault=` when no vault is set, so Obsidian saves to whichever vault is open — for a one-vault user that is *more* reliable than typing a name that has to match exactly, and templates carry their own vault and path besides. Settings live on upstream's own page, reachable from the clip sheet's gear and from the launcher screen (so a page that will not load cannot lock you out). **Both FABs kept at one tap** because both actions are frequent: every shared link is read, many are clipped. Folding `Reader` into the sheet would have put the *more* common action two taps and a modal behind the less common one — D4 ordered the reader first for that reason. |
+| D33 | **Chrome is ~~two mini FABs~~ one FAB menu — `Reader` and `Clip`, bottom right (the FAB half superseded by D35, 2026-09-03; the rest stands). No shell bar, no `Reload`, and no setup screen** | Johan's call, 2026-09-01, once D31 made upstream's UI the control surface. Three deletions and one keep. **`Reload` retired:** toggling the reader off already ends in `window.location.reload()`, so D26's recovery is "toggle off, wait, toggle on", and a page that fails outright still gets the error pane's Retry — what remained was a permanent button for "the raw page rendered wrong". **Pull-to-refresh was considered and rejected**: `SwipeRefreshLayout` around a WebView fights the page's own scroll and any site with its own gesture, and a recovery action should not be gesture-dependent. **M2.4's setup screen deleted:** `saveToObsidian` omits `&vault=` when no vault is set, so Obsidian saves to whichever vault is open — for a one-vault user that is *more* reliable than typing a name that has to match exactly, and templates carry their own vault and path besides. Settings live on upstream's own page, reachable from the clip sheet's gear and from the launcher screen (so a page that will not load cannot lock you out). **Both FABs kept at one tap** because both actions are frequent: every shared link is read, many are clipped. Folding `Reader` into the sheet would have put the *more* common action two taps and a modal behind the less common one — D4 ordered the reader first for that reason. **That last clause is what D35 revisited**: a menu costs the same second tap, but spends it on a labelled choice rather than on a modal. |
 | D34 | **Personal use only: no branding work, no shipped licence notices.** The Obsidian mark is left where upstream put it, and `THIRD_PARTY_LICENSES` is not assembled | Johan's call, 2026-09-03: *"this app will only be for personal use (for the longest time at least)… I will not be sharing it with anyone."* Both obligations that D15 encoded — MIT attribution and upstream's trademark carve-out — are triggered by **distribution**, and there is none: one sideloaded APK on one phone, from a private repo. Retires D15 and G2's branding constraint, deletes M1.5's sweep, and empties §17. **The one condition that reverses this: handing the APK to anyone else.** At that point the sweep is recoverable at `c2a1e6f` and §17's notice table is in that same commit's history. |
+| D35 | **One FAB that opens a two-item menu, not two permanent FABs.** Tap to expand; the main button becomes `Clip` under the finger that just tapped, `Reader` pops out above it; tapping anywhere else, or Back, closes it | Johan's call, 2026-09-03: the pair *"takes up a lot of space"*. Collapsed chrome goes from 88dp to 56dp over the page. **The cost is a tap on every action** — the core flow is 4 taps where it was 2 — and it was accepted explicitly rather than overlooked: *"I do not mind the extra click for the clarity."* A context-aware single FAB (`Reader` when off, `Clip` when on) was offered as the cheaper alternative and **rejected in favour of the explicit menu**; recorded so it is not re-proposed. The one-tap clip from inside the reader is unaffected — the toolbar's own gem still opens the sheet (M2.6). |
 
 ## 2. Gate outcomes
 
@@ -506,7 +509,7 @@ android/                              Gradle project (Kotlin, Compose, minSdk 31
   app/src/main/
     java/…/MainActivity.kt            launcher: "share a link" + a door into settings (D33)
     java/…/share/ShareReceiverActivity.kt, SharedUrl.kt      (URL parsing is JVM-testable)
-    java/…/reader/ReaderActivity.kt   the PAGE WebView, the two FABs, and the clip sheet's host
+    java/…/reader/ReaderActivity.kt   the PAGE WebView, the FAB menu, and the clip sheet's host
     java/…/reader/ReaderWebViewClient.kt
     java/…/reader/AndroidBridge.kt    the @JavascriptInterface object; both WebViews share it
     java/…/reader/ClipperBundle.kt    the bundle asset + the JS snippets Kotlin drives it with
@@ -520,7 +523,7 @@ android/                              Gradle project (Kotlin, Compose, minSdk 31
        are all upstream's. `ClipSheet.kt` survives as a *container* only — ~90 lines, no clipper
        logic. There is no settings/ package: D33 deleted the setup screen. SafWriter stays
        deferred — D18.)
-    res/drawable/ic_reader.xml, ic_clip.xml                  the two FAB glyphs (D33)
+    res/drawable/ic_reader.xml, ic_clip.xml, ic_actions.xml  the FAB glyphs (D33, D35)
     res/values/themes.xml, res/values-night/themes.xml       the day/night pair (D29 context)
     assets/clipper-bundle.js          injected into the PAGE WebView — committed, PROD build (D28)
     assets/ui/                        upstream's popup/side-panel/settings + style.css, served
@@ -762,8 +765,8 @@ hand-written reader.
   later); `WebView.setWebContentsDebuggingEnabled(true)` in debug builds. Loading and error states
   (offline, HTTP errors) with retry.
 
-  **Shell chrome — superseded by D33; see §8's M2.6.** M1 shipped a slim bottom bar (`Reader`,
-  `Reload`); it is now two mini FABs (`Reader`, `Clip`) with `Reload` retired. What has not changed:
+  **Shell chrome — superseded by D33 and D35; see §8's M2.6 and M2.9.** M1 shipped a slim bottom
+  bar (`Reader`, `Reload`); it is now one FAB opening a `Reader`/`Clip` menu, with `Reload` retired. What has not changed:
   no URL bar, no back/forward, no tabs — D23 holds — and System Back walks WebView history where it
   exists and otherwise finishes the activity, which is an OS gesture rather than chrome.
 - **M1.3 — Production shim. DONE (2026-09-01), verified on device.** `shim/browser.ts` backs
@@ -919,8 +922,8 @@ The Kotlin here is plumbing; the clipper is upstream's.
 
 - **M2.1 — UI WebView on our own origin. DONE (2026-09-01), verified on the Find N6.** Upstream's
   `popup.html` renders in a `ModalBottomSheet` over the page, served from
-  `https://appassets.androidplatform.net/ui/` by `WebViewAssetLoader`, reached by the `Clip` FAB
-  (D33) or the reader toolbar's own Obsidian button (M2.6). `build.mjs` now emits `assets/ui/` (popup, side-panel, settings + `style.css`)
+  `https://appassets.androidplatform.net/ui/` by `WebViewAssetLoader`, reached by the FAB menu's
+  `Clip` (D33, D35) or the reader toolbar's own Obsidian button (M2.6). `build.mjs` now emits `assets/ui/` (popup, side-panel, settings + `style.css`)
   beside the page bundle; `androidx.webkit` 1.15.0 added.
   - **Mount at `/`, not `/ui/`.** `AssetsPathHandler` appends whatever follows the registered prefix
     to `assets/`, so mounting at `/ui/` strips the very segment the files live under and every page
@@ -1056,6 +1059,20 @@ The Kotlin here is plumbing; the clipper is upstream's.
   - Diagnosis ran through the DevTools protocol over `adb forward` — a blank page with one unrelated
     console error says nothing by itself. `setWebContentsDebuggingEnabled` is called only in
     `ReaderActivity`, so that socket exists only once a reader has run in the process.
+
+- **M2.9 — The shell FAB became a menu. DONE (2026-09-03, D35), verified on the Find N6.**
+  `ShellControls` is now one `FloatingActionButton` over a full-window dismiss scrim, with `Reader`
+  as a `SmallFloatingActionButton` that animates out above it. The collapsed glyph is a neutral plus
+  (`ic_actions`) that rotates 45° as it opens; open, the main button *is* `Clip`.
+  - **Verified:** collapsed shows only `Actions`; tapping it reveals `Reader` and `Clip`; tapping the
+    page dismisses without reaching the page; `Reader` applies the reader and collapses; two taps in
+    the same spot open the populated clip sheet. Back closes the menu before it touches WebView
+    history.
+  - **The scrim swallows its dismiss tap on purpose.** "Tap anywhere that is not a button" is the
+    close gesture, so passing that tap through to the page would fire a link as often as it closed
+    the menu.
+  - **Menu state is not saved across process death** — a menu the user cannot remember opening
+    should not come back open.
 
 ### Open, not decided
 
@@ -1274,7 +1291,7 @@ check ColorOS's "recommended sharing" settings first.
 
 | Element (screenshot) | Owner |
 |---|---|
-| Shell chrome — two mini FABs, `Reader` and `Clip` (D33; no screenshot — post-dates them) | M1 shape, reshaped at M2.6. `Reload` retired |
+| Shell chrome — one FAB opening a `Reader`/`Clip` menu (D33, D35; no screenshot — post-dates them) | M1 shape, reshaped at M2.6 and M2.9. `Reload` retired |
 | Reader toolbar's Obsidian button → clip sheet (`toggleIframe` redirected) | M2.6 — the one-tap clip from inside the reader |
 | Reader typography, layout, TOC button (1) | M1 |
 | Highlighter pen button (1) | **Working since M2.7** — the reader toolbar's pen. The popup's pen is the wrong surface here (the sheet covers the page) and is left alone rather than built on |

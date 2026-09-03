@@ -6,8 +6,10 @@
 
     <string name="share_no_url">No link found in what was shared.</string>
 
-    <!-- Shell controls: two mini FABs (D25, reshaped by D33). Reload retired — toggling the
-         reader off already reloads, which is D26's recovery. -->
+    <!-- Shell controls: one FAB that opens a two-item menu (D25, reshaped by D33 and D35).
+         Reload retired — toggling the reader off already reloads, which is D26's recovery. -->
+    <string name="action_actions">Actions</string>
+    <string name="action_close_menu">Close menu</string>
     <string name="action_reader">Reader</string>
     <string name="action_retry">Retry</string>
     <string name="action_clip">Clip</string>

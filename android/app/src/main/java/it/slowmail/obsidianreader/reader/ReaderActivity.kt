@@ -15,6 +15,17 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +37,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +55,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -160,6 +173,9 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
     var loadError by remember { mutableStateOf<String?>(null) }
     var readerActive by remember { mutableStateOf(false) }
     var toggleInFlight by remember { mutableStateOf(false) }
+    // The shell FAB's menu (D35). Deliberately not saved across process death: a menu the
+    // user cannot remember opening should not come back open.
+    var fabExpanded by remember { mutableStateOf(false) }
     // Non-null while upstream's clip sheet is up. Holds the page identity captured at the moment
     // Clip was tapped, not a live read: the sheet is clipping the page as it was then.
     var clipping by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -351,11 +367,13 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
                 }
                 if (loadError == null) {
                     ShellControls(
+                        expanded = fabExpanded,
+                        onExpandedChange = { fabExpanded = it },
                         readerActive = readerActive,
                         enabled = webView != null && !toggleInFlight,
                         onToggleReader = ::toggleReader,
                         onClip = ::openClipSheet,
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                        modifier = Modifier.matchParentSize(),
                     )
                 }
             }
@@ -377,59 +395,118 @@ private fun ReaderScreen(url: String, prefs: SharedPreferences, onDone: () -> Un
     // gesture rather than chrome, so D23 is untouched — there are no back/forward buttons.
     BackHandler {
         val web = webView
-        if (web != null && web.canGoBack()) web.goBack() else onDone()
+        when {
+            // An open menu is the first thing Back should take away — same as the scrim tap.
+            fabExpanded -> fabExpanded = false
+            web != null && web.canGoBack() -> web.goBack()
+            else -> onDone()
+        }
     }
 }
 
 /**
- * The whole of the app's chrome (D25, reshaped by D33): two small buttons, bottom right.
+ * The whole of the app's chrome (D25, reshaped by D33, then by **D35**): one FAB, bottom right,
+ * that opens a small vertical menu.
  *
- * `Reader` and `Clip` are here and nothing else. **`Reload` was retired**, not moved: toggling the
- * reader off already ends in `window.location.reload()`, so D26's recovery for a too-early reader
- * tap is "toggle off, wait, toggle on" — and a page that fails to load outright still gets the
- * error pane's Retry. That left a permanent button for "the raw page rendered wrong", which is rare
- * enough not to earn one.
+ * **D35, Johan's call (2026-09-03):** two permanent mini FABs took too much of the page. One
+ * collapsed button costs 56dp where the pair cost 88dp, and the second tap buys an explicit label
+ * for what each action is. He accepted that cost in as many words — *"I do not mind the extra click
+ * for the clarity"* — so the tap count is the decision, not an oversight to optimise away later.
  *
- * Both actions stay one tap because both are frequent: every shared link is read, and many are
- * clipped. Folding `Reader` into the clip sheet would have made the *more* common action two taps
- * behind the less common one. Once the reader is on, upstream's own toolbar carries a clip button
- * too (its `toggleIframe` is routed to the sheet), so `Clip` here is really for clipping a page
- * you chose not to read.
+ * **The main button is `Clip` once the menu is open**, in the same place the finger just tapped;
+ * `Reader` pops out above it. Swapping the two is a matter of exchanging the two `onClick`s and
+ * icons below, and nothing else depends on the order.
+ *
+ * `Reload` stays retired (D33): toggling the reader off already ends in `window.location.reload()`,
+ * which is D26's recovery for a too-early reader tap, and a page that fails outright still gets the
+ * error pane's Retry.
+ *
+ * The dismiss scrim is the full window on purpose — "tap anywhere that is not a button" is the
+ * close gesture, and that first tap is deliberately swallowed rather than passed to the page.
  */
 @Composable
 private fun ShellControls(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     readerActive: Boolean,
     enabled: Boolean,
     onToggleReader: () -> Unit,
     onClip: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        SmallFloatingActionButton(
-            onClick = { if (enabled) onToggleReader() },
-            containerColor = if (readerActive) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-        ) {
-            Icon(
-                painterResource(R.drawable.ic_reader),
-                contentDescription = stringResource(R.string.action_reader),
+    // Collapse before acting, so the menu is never left open behind a sheet or a reloading page.
+    fun run(action: () -> Unit) {
+        onExpandedChange(false)
+        if (enabled) action()
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        AnimatedVisibility(visible = expanded, enter = fadeIn(), exit = fadeOut()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
+                    // No ripple and no indication: this is a dismiss target, not a control.
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { onExpandedChange(false) },
             )
         }
-        SmallFloatingActionButton(
-            onClick = { if (enabled) onClip() },
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+
+        Column(
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(
-                painterResource(R.drawable.ic_clip),
-                contentDescription = stringResource(R.string.action_clip),
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn() + scaleIn(initialScale = 0.7f) + slideInVertically { it / 2 },
+                exit = fadeOut() + scaleOut(targetScale = 0.7f) + slideOutVertically { it / 2 },
+            ) {
+                SmallFloatingActionButton(
+                    onClick = { run(onToggleReader) },
+                    containerColor = if (readerActive) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    },
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_reader),
+                        contentDescription = stringResource(R.string.action_reader),
+                    )
+                }
+            }
+
+            // Collapsed this is a neutral plus; open, it rotates 45° into a close mark *and*
+            // becomes Clip. One button with two jobs, which is why the icon crossfades rather
+            // than simply rotating.
+            val rotation by animateFloatAsState(
+                targetValue = if (expanded) 45f else 0f,
+                label = "shellFabRotation",
             )
+            FloatingActionButton(
+                onClick = { if (expanded) run(onClip) else onExpandedChange(true) },
+                containerColor = if (expanded) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+            ) {
+                if (expanded) {
+                    Icon(
+                        painterResource(R.drawable.ic_clip),
+                        contentDescription = stringResource(R.string.action_clip),
+                    )
+                } else {
+                    Icon(
+                        painterResource(R.drawable.ic_actions),
+                        contentDescription = stringResource(R.string.action_actions),
+                        modifier = Modifier.rotate(rotation),
+                    )
+                }
+            }
         }
     }
 }
