@@ -1,14 +1,5 @@
 # Project toolchain. `mise install` provisions these; direnv/mise activation
 # puts them on PATH inside the repo.
-#
-# Gradle is JDK-sensitive, so the JDK is pinned rather than inherited from the
-# system. Android Studio uses its own bundled JBR — see docs/plan playbook §5.
 
 [tools]
-java = "temurin-25"
 node = "22.22.2"
-
-[env]
-# Picked up by the justfile (which falls back to this same path) and by Gradle,
-# so `adb` and the SDK resolve without platform-tools being on PATH.
-ANDROID_HOME = "{{env.HOME}}/Library/Android/sdk"
