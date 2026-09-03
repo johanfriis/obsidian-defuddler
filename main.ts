@@ -1,6 +1,5 @@
 import { Plugin } from 'obsidian';
 import { clipHtml } from './src/clip';
-import { runSpike } from './src/spike';
 
 /**
  * Phase 0 skeleton. It loads, it unloads, and it exposes the engine binding — nothing more. The
@@ -15,14 +14,6 @@ export default class DefuddlerPlugin extends Plugin {
 	readonly clip = clipHtml;
 
 	async onload(): Promise<void> {
-		// TEMPORARY — M0 only. Answers S3 on the phone and S2's remaining half in one run, and is
-		// deleted when GATE G0 closes.
-		this.addCommand({
-			id: 'run-m0-spike',
-			name: 'Run the M0 spike',
-			callback: () => {
-				void runSpike(this.app);
-			},
-		});
+		// Empty until M1. The M0 spike command lived here and was deleted when GATE G0 closed.
 	}
 }

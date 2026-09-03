@@ -11,8 +11,7 @@ decisions `P1`, `P2`, … so the two can never be confused.
 
 **Definition of done for v1:** Johan copies a link on the phone or the desktop, runs one command,
 picks a template from a list that already has the right one selected, and the note lands in the vault
-shaped by that template — with his usual on-create automations firing, because the note is written
-through the vault API and not through a URI.
+shaped by that template. On the phone and on the desktop, from the same build.
 
 ## Pinned upstream (verified 2026-09-03)
 
@@ -38,11 +37,13 @@ Bumping either pin runs the extraction harness first (§14) — never casually.
   where superseded text might be wanted again, name the commit that holds it. The audience is the next
   agent session, which pays for every dead line it has to parse.
 - A fresh session reads §1 (decisions), §2 (gates), §3 (upstream ground truth), and its milestone.
-- **Where things stand (2026-09-03).** **Phase 0 is done.** The plugin builds, typechecks, and the
-  inherited extraction harness passes from its new home; the build is symlinked into Sanctum. `main`
-  was cleared of the Android app at `2c5e484`, and Phase 0 folded `jsbridge/` into the repo root and
-  deleted it. Measurements are in §2. The next thing to do is M0, and its first spike (S1) is the one
-  that can still reopen P1.
+- **Where things stand (2026-09-04). Phase 0 and M0 are done; G0, G1 and G3 are closed.** The plugin
+  builds and loads on both platforms, the clip engine is ours (G3) and proven against every fixture,
+  and the extraction harness is hermetic. What does not exist yet is any of the product: no command,
+  no templates, no settings, no save path. **The next thing to do is M1.**
+
+  Read G3 before touching `src/clip.ts` — it is the largest decision in this document and the reason
+  that file exists at all.
 
 ## 1. Decisions log
 
@@ -65,7 +66,7 @@ nothing still opens the template picker).
 | # | Decision | Rationale |
 |---|---|---|
 | **P1** | **One source: fetch the URL with `requestUrl()`. No webview, no iframe, on any platform.** | The premise that mobile needs a rendered DOM does not survive the evidence already in this repo. `jsbridge/test/fixtures/` are `curl` captures — server bytes, no JavaScript ever executed — and `extraction.test.ts` passes against them: stephango 13,584 chars with title/author/1400+ words, github 6,328, apnews 3,901, youtube 2,780 **including the full transcript**, instagram nothing. Four of five, and the transcript survives because Defuddle's `YoutubeExtractor` reads inline player JSON rather than the rendered page. The rendered DOM buys exactly one measured thing: github's shadow DOM. That is not worth a second code path in v1. Reversible and *additive* — see P2's note and §13. |
-| **P2** | **Clipping happens inside Obsidian; notes are written with the vault API.** | This is the whole reason to pivot. It retires `D2`, `D18` and `D36` outright: no `obsidian://new`, no clipboard as transport, no size ceiling, no foregrounding, and `G0/A5`'s finding that Templater's on-create trigger does not fire is simply no longer true of us. **Cost, recorded honestly:** `D2` credited the URI with implementing dedup/append/overwrite for free. That credit is now a debt — those behaviours are ours to write (M4). |
+| **P2** | **Clipping happens inside Obsidian; notes are written with the vault API.** ~~…so that on-create automations fire.~~ **Narrowed by Johan, 2026-09-04: on-create automations are an outdated requirement and are out of scope.** | This is still the whole reason to pivot, and it retires `D2`, `D18` and `D36` outright — no `obsidian://new`, no clipboard as transport, no size ceiling, no foregrounding, and the note enters the index as it is written. What it no longer claims is that Templater's on-create trigger fires, which was `G0/A5`'s finding turned into a benefit. **That leg is gone and the decision does not need it**: everything above is independent of it, and so is the fact that one build serves desktop and phone. It does mean the plugin-over-app case is one leg shorter than P1's write-up implied — worth knowing, not worth re-litigating. **Cost, unchanged:** `D2` credited the URI with dedup/append/overwrite for free. That credit is a debt, and those behaviours are ours to write (M4). |
 | **P3** | **Upstream's engine is what we build on. We ship none of its UI. ~~We consume `api.ts`; we do not fork it~~ — narrowed by GATE G3 on 2026-09-04: its `clip()` wrapper is unusable in a browser and is reimplemented in `src/clip.ts` over the same helpers. The helpers, the template compiler, the filters and the frontmatter generator are still upstream's, untouched.** | `api.ts` is upstream's own environment-agnostic entry point: `clip({html, url, template, documentParser})` plus `matchTemplate()`. It is the entire clip pipeline with no `browser.*` in its import graph (§3 lists the 70 files it does pull). This is what makes the pivot cheap, and it is the opposite of `D31`, which hosted upstream's *extension* — that decision bought a UI and paid for it with the polyfill shim, two WebViews, a message router and bundle injection. Here we buy only the engine and build our own small UI, because Obsidian already gives us modals, settings and a command palette. |
 | **P4** | **Templates are markdown files in the vault, in a configurable folder. `matchTemplate()` preselects; the human confirms.** | In-vault means editable and syncable anywhere, with no separate store to keep in step. Preselect-don't-apply follows the governing principle, and matches `M3.3` in the old playbook. The file format is settled in **GATE G1** — markdown, with the note's frontmatter in a fenced block and its types taken from the vault. |
 | **P5** | **Settings live in Obsidian's settings tab, declared with `getSettingDefinitions()`. No `display()`. All persisted state sits inside `plugin.settings`.** | **Corrected in Phase 0, 2026-09-03.** This decision first read "built with `display()`", on the belief that Obsidian here was 1.8.10 and that the declarative API did not exist yet. Both halves were wrong: the version came from a stale `Info.plist`, and the machine is on 1.14.0. With `minAppVersion` at 1.13.0 the linter's rule is to implement the definitions and *delete* `display()`, since a non-empty definition list bypasses it anyway. The single-blob rule is unchanged and still matters, because Obsidian's auto-persist clobbers sibling keys written with `saveData()`. |
@@ -216,46 +217,47 @@ fetch buys — as S1 predicted.
   only property that matters here (P10), but it is a reminder that a fingerprinting site does not
   serve `requestUrl` the same page twice.
 
-### S4 — the write path — the probe is built, and one setting has to change first
+### S4 findings — the write path — CLOSED (2026-09-04)
 
-Read out of Sanctum's config on 2026-09-04, before running anything:
+**Most of S4 was retired rather than run.** Its central question was whether a note written with
+`vault.create()` fires Templater's on-create trigger. Johan's call: on-create automations are an
+outdated requirement, so P2 no longer claims that and the question is out of scope. For the record,
+had it been run it would have measured nothing useful — Sanctum has a Templater folder template
+mapped for `Clippings`, but both `trigger_on_file_creation` and `enable_folder_templates` are off,
+so nothing fires there today however a note is created. That is also a reason to treat `G0/A5`, the
+Android measurement that `obsidian://new` does not fire the trigger, as unsettled rather than as
+evidence for anything here.
 
-| Setting | Value |
+**What S4 did answer, from Sanctum's config, is the half that M4 actually needs.** Daily-note
+resolution needs no private API: `daily-notes.json` under `app.vault.configDir` carries `folder`
+(`Calendar` here), `template`, and `format` — absent, which means the default `YYYY-MM-DD`. Folder
+plus a formatted date is the path. That closes the risk that M4 would have to reach into an internal
+plugin.
+
+Everything else S4 was to establish — dedup on an existing path, append, prepend, overwrite — is
+implementation work against a documented API, not an open question. It belongs in M4, not in a spike.
+
+### GATE G0 — the de-risking spike — CLOSED, PASSED (2026-09-04)
+
+All four spikes are resolved and nothing they found argues against building v1 as specified.
+
+| Spike | Outcome |
 |---|---|
-| Templater `trigger_on_file_creation` | `null` |
-| Templater `enable_folder_templates` | `null` |
-| Templater folder mapping | `Clippings` → `Templates/Journal.md` |
-| Core daily notes | enabled, folder `Calendar`, template `Templates/Daily Template.md`, no `format` |
+| S1 fixture parity | Passed. All five fixtures identical through a real `DOMParser`. **P1 holds.** |
+| S2 live fetch | Passed both halves. The pages still extract identically three days on, and `requestUrl` reproduces them from inside Obsidian. |
+| S3 mobile | Passed. Android matches every desktop baseline; five pages in 6 s at 836 KB. |
+| S4 write path | Closed. Its central question was retired with P2's narrowing; the half M4 needed is answered. |
 
-**Both Templater flags are off.** A folder template is configured for `Clippings` but neither the
-creation trigger nor folder templates are enabled, so nothing would fire today no matter how a note
-is created. The spike reports both flags beside its result, so a run cannot be misread as a verdict
-on the vault API when it is a verdict on a setting.
+What the gate cost, in the order it hurt: upstream's `clip()` turned out to be unusable in a browser
+(GATE G3), the extraction harness turned out to be silently network-dependent, and the YouTube
+transcript turned out to be a network call rather than a property of the bytes. All three are fixed
+and recorded. None of them touched P1.
 
-**This also puts a question mark over `G0/A5`,** the Android measurement that `obsidian://new` does
-not fire Templater's on-create trigger. That finding is load-bearing for P2, and if these flags were
-also off when it was taken, it measured the setting rather than the URI. It does not change what we
-build — the vault API is the right way to write a note regardless — but P2's *headline benefit* is
-unproven until Templater is switched on and the probe run. Worth knowing before claiming it works.
-
-**Daily-note resolution turns out to be easy**, which retires the risk that M4 would need a private
-API. `daily-notes.json` in the config directory carries `folder`, `template` and `format`; `format`
-is absent here, which means the default `YYYY-MM-DD`. Folder plus a formatted date is the path, and
-`app.vault.configDir` resolves the directory without hardcoding `.obsidian`.
-
-**To close S4:** turn on Templater's `Trigger Templater on new file creation` and its folder
-templates, then run `Defuddler: Run the M0 spike` once more. It writes a probe note into `Clippings`,
-waits two seconds, reads it back, and reports whether an automation rewrote it. The note is left in
-place because if Templater fires, that file is the evidence.
-
-### GATE G0 — the de-risking spike — nearly closed
-
-S1 passed, S2 passed on both halves, S3 passed. **S4 is the only spike left**, and it is the one that
-tests P2's central claim: that a note written with `vault.create()` fires Templater's on-create
-trigger, which `obsidian://new` measurably did not. It also has to settle how the six save behaviours
-resolve against the vault API, so that M4 is not a discovery exercise.
-
-The spike command stays until G0 closes, then it and `src/spike.ts` are deleted.
+**Consequently the spike command and `src/spike.ts` are deleted.** One question it was carrying moves
+rather than dies: whether a *populated* clipboard reads on Android. The probe only ever saw an empty
+one, which proved the call path works and nothing more. It is not gating — P8 ships the prompt
+fallback either way — and M1's first task is the real clipboard read, so it is answered there
+instead.
 
 ### GATE G1 — template file format — CLOSED (2026-09-03)
 
@@ -535,11 +537,9 @@ a URL in a way the plugin could pick up, which would give the phone an entry poi
 
 ### S4 — The write path
 
-Prove `vault.create()` fires Johan's on-create automations — the thing `G0/A5` measured as broken
-through `obsidian://new` and the single biggest claim P2 makes. Templater is the test. Then confirm
-what the vault API needs for the other five behaviours so M4 is not a discovery exercise: dedup on an
-existing path, append and prepend to an existing note, overwrite, and how to resolve today's daily
-note without a private API.
+**Mostly retired before it ran.** Its central question — whether `vault.create()` fires on-create
+automations — went with P2's narrowing on 2026-09-04. What remained was how to resolve today's daily
+note without a private API, and that was answered from Sanctum's config. See §2.
 
 ### GATE G0
 
@@ -570,7 +570,9 @@ vault in M2; this milestone is about the pipeline.
 - [ ] An Instagram URL produces a note with frontmatter and no body, and no error (P10).
 - [ ] Offline, a 404 and a 403 each produce a distinct, accurate message and no note.
 - [ ] A non-URL on the clipboard opens the prompt rather than failing.
-- [ ] Templater's on-create trigger fires on the created note.
+- [ ] **A populated clipboard reads on Android.** Carried over from S3, which only ever saw an empty
+      one. Whatever the answer, P8's prompt fallback ships; this decides how often it is the visible
+      path.
 
 ## 8. M2 — Templates in the vault
 
@@ -696,12 +698,11 @@ whichever vault was last used, so anything generating these links should carry t
 
 | Risk | Mitigation | Status |
 |---|---|---|
-| Real `DOMParser` extracts worse than the jsdom harness predicts | S1 measures it directly against the committed snapshots; a large regression reopens P1 | Open until G0 |
+| ~~Real `DOMParser` extracts worse than the jsdom harness predicts~~ | **Closed by S1.** Identical on all five fixtures, and an attached laid-out document gave nothing extra | Closed |
 | `navigator.clipboard.readText()` unreliable on mobile | P8 makes the prompt the fallback, so this degrades the ergonomics and never the function | Mitigated by design; S3 measures how often |
 | Defuddle's `PARTIAL_SELECTORS` contains a regex lookbehind, which throws on iOS < 16.4 | Not reachable on Android; would be a hard failure, not a degradation, on an old iPhone. Not fixable in our code — it is inside the pinned dependency | Accepted; revisit if iOS is ever a target |
 | ~~`main.js` size slows Obsidian mobile's startup~~ | **Closed by S3.** 836 KB, and five pages clip end to end in 6 s on the phone against 5 s on the desktop | Closed |
 | ~~Daily-note resolution needs semi-private API~~ | **Closed 2026-09-04.** `daily-notes.json` under `app.vault.configDir` carries folder, template and format; an absent format means `YYYY-MM-DD`. No private API | Closed |
-| P2's headline benefit is unproven, and `G0/A5` may have measured a disabled setting rather than the URI | Templater's creation trigger and folder templates are both off in Sanctum. Turn them on, then run the spike's S4 section. The vault API is still the right way to write a note either way | Open until S4 |
 | Server HTML is empty for SPA-only pages | P10 — a note with frontmatter and no body is a valid outcome, and §13's rendered source is the real answer if it becomes common | Accepted |
 | Obsidian on the phone is below 1.13, so declarative settings render nothing | The phone ran the spike, so it is new enough to have installed a plugin declaring `minAppVersion` 1.13.0. Unverified beyond that | Mostly closed |
 | Reading the vault's property types reaches into the config directory, whose file shape is undocumented | Resolve the path through `app.vault.configDir`, never a hardcoded `.obsidian`, and treat any failure as "no types" — the quoted-text default is valid YAML, so the failure is a downgrade, not a break | Accepted |
