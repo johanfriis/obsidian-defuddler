@@ -65,9 +65,9 @@ Bumping either pin follows the procedure in §14 — never casually.
   1. **M2.3's failure half.** The happy path is done; what is unproven is D2's promise that a failed
      save is *reported*, never silently rerouted. Upstream's `tryClipboardWrite` does reroute
      silently. On the device the clipboard path succeeds (§2), so this needs forcing.
-  2. **M2.7's remaining gap.** The reader dropdown's `copyMarkdownToClipboard` /
-     `saveMarkdownToFile`, both visible and neither routed. (`browser.commands.getAll` closed on
-     2026-09-03 — the Hotkeys section was deleted rather than the API stubbed.)
+  2. ~~**M2.7's remaining gap.**~~ **Closed 2026-09-03.** `browser.commands.getAll` went by
+     deleting the Hotkeys section rather than stubbing the API; the reader dropdown's
+     `copyMarkdownToClipboard` / `saveMarkdownToFile` stay unrouted **by choice** — see M2.7.
   3. **M3** — mostly verification now, not building; the template editor already works (§9).
   4. **M4.3** — the only real remainder of M4: wiring highlights into `clip()` so `{{highlights}}`
      populates a note. D8's in-session rule is now a *choice*, not a saving; decide it here.
@@ -164,7 +164,7 @@ Filled in as gates are passed. Empty = not reached.
 |---|---|---|---|
 | G0 | Does `obsidian://new` + `&clipboard` work on the Find N6? What is the reliable `content=` size limit? Is the vendored reader viable in a WebView? | **CLOSED — passed.** Spikes A and B both pass; the reader renders on all four test pages. Both trade-offs signed off by Johan → D20 (inline CSS) and D21 (Trusted Types). M0 ends here per D22. **Next: M1.** | A: 2026-08-31, B: 2026-08-31, closed: 2026-08-31 |
 | G1 | Is reader parity good enough to build on (vs. reworking Layer B)? | **CLOSED — passed.** Johan read real articles on the Find N6 and ruled the reader good enough to build on. Layer B stays as designed; D26's rework path (render into a separate document) stays dormant unless real reading shows extraction timing recurring. Three M1 acceptance boxes were still unticked at the gate (the three apps' own share sheets, the transcript on device since B3, cookies against a real login) — carried into M2's device work as background checks, Johan's call. **Next: M2.** | 2026-09-01 |
-| G2 | v1 ship review: app name + icon chosen; post-v1 order reconfirmed | — *(branding constraint dropped by D34 — the name and icon are now only a matter of taste)* | — |
+| G2 | v1 ship review: app name + icon chosen; post-v1 order reconfirmed | **Name chosen: "Obsidian Reader"** (2026-09-03) — D34's territory, and not a name that was available while D15 stood. The `(dev)` suffix went with it: it lived in `app_name` alone, with no debug `applicationIdSuffix` behind it. **Icon still open.** | name: 2026-09-03 |
 
 ### G0 / Spike A findings — 2026-08-31, Find N6 (CPH2765), Android 16 / API 36, vault `Sanctum`
 
@@ -1044,7 +1044,13 @@ The Kotlin here is plumbing; the clipper is upstream's.
     state as a boolean in our background instead; it was deleted** — two pens would have drifted
     apart, and `Reader.toggleHighlighter` already makes the page authoritative.
   - The reader toolbar's clip dropdown offers `copyMarkdownToClipboard` and `saveMarkdownToFile`.
-    Both are now visible and neither is routed; §16 assigns them to M2 and M6 respectively.
+    Both are visible and neither is routed. **Left as duds on purpose (Johan, 2026-09-03):** *"I
+    don't see myself ever using them, and if I do need them, we can add them at that time."* Worth
+    naming the cost, since this is the one place the app knowingly keeps visible controls that do
+    nothing — the governing principle argues against it, and it was accepted anyway for two actions
+    the sole user does not want. The route is short if that changes: upstream's `content.ts` already
+    implements both (~L153, ~L178), so the router needs their names and has to send them back into
+    the page; `saveMarkdownToFile` additionally needs a Kotlin download path (§16 puts that in M6).
 
 - **M2.8 — The settings page rendered blank. FIXED (2026-09-03), verified on the Find N6.** Both
   doors — the launcher's *Settings and templates* and the clip sheet's gear — showed an empty page.
@@ -1161,7 +1167,8 @@ real page. **There is no template store, no importer, no management UI and no ed
 
 - [ ] **GATE G2 (Johan):** choose app name + icon — taste only, no branding constraint (D34);
   reconfirm post-v1 order (D5).
-- [ ] Set the real icon, `applicationId`, app label, versionName `1.0`.
+- [ ] Set the real icon and versionName `1.0`. *App label done 2026-09-03 ("Obsidian Reader");
+  `applicationId` `it.slowmail.obsidianreader` stands.*
 - [ ] Release keystore generated and backed up; signing config reads credentials from
   `local.properties`/env so it works identically on macOS and Windows.
 - [ ] R8/proguard: keep rules for `@JavascriptInterface` members; release build tested on device —
