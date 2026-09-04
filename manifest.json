@@ -1,7 +1,7 @@
 {
 	"id": "defuddler",
 	"name": "Defuddler",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"minAppVersion": "1.13.0",
 	"description": "Clip a web page into the vault with Defuddle, shaped by a template kept in the vault.",
 	"author": "Johan Friis",

@@ -10,7 +10,6 @@ import {
 } from '../vendor/obsidian-clipper/src/utils/shared';
 import { sanitizeFileName } from '../vendor/obsidian-clipper/src/utils/string-utils';
 import { obsidianFetch } from './fetch';
-import { splitTranscript } from './youtube';
 
 export type { ClipResult, Template, Property };
 export { matchTemplate };
@@ -102,17 +101,11 @@ export async function clipHtml(args: ClipArgs): Promise<ClipResult> {
 		wordCount: defuddleResult.wordCount,
 		schemaOrgData: defuddleResult.schemaOrgData,
 		metaTags: defuddleResult.metaTags,
+		// Defuddle's site extractors put their own variables here, and `{{transcript}}` on a YouTube
+		// page is one of them — present only when the captions were actually fetched, which is why it
+		// is invisible to anything that runs with the network refused.
 		extractedContent: defuddleResult.variables,
 	});
-
-	// Two variables of our own, neither of which upstream has. A template using them will not work
-	// in the Web Clipper — the cost of `{{transcript}}` being askable at all, since Defuddle buries
-	// it inside `{{content}}` under a heading you cannot change.
-	const { before, transcript } = splitTranscript(markdownContent);
-	if (transcript) {
-		(variables as Record<string, string>)['{{transcript}}'] = transcript;
-		(variables as Record<string, string>)['{{contentWithoutTranscript}}'] = before ?? '';
-	}
 
 	const asyncResolver = createAsyncResolver(doc);
 	const selectorProcessor = createSelectorProcessor(doc);

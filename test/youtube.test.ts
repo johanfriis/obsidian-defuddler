@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { descriptionFor, preferredEnglishTrack, readCaptionTracks, splitTranscript, transcriptLanguageFor } from '../src/youtube';
+import { descriptionFor, preferredEnglishTrack, readCaptionTracks, transcriptLanguageFor } from '../src/youtube';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 
@@ -98,35 +98,5 @@ describe('the description a watch page really carries', () => {
 		expect(descriptionFor('<meta property="og:description" content="   ">')).toBeUndefined();
 		// A page with only the boilerplate meta gets nothing from us, which leaves Defuddle's answer.
 		expect(descriptionFor('<meta name="description" content="Share your videos">')).toBeUndefined();
-	});
-});
-
-describe('splitting the transcript out of the content', () => {
-	// Defuddle emits a watch page as the embed, then `## Transcript`, then one cue per line. That is
-	// all of {{content}}, so a template that wants the transcript under its own heading has no way to
-	// ask for it — which is why {{transcript}} exists.
-	const CONTENT = [
-		'![](https://www.youtube.com/watch?v=abc)',
-		'',
-		'## Transcript',
-		'',
-		'**0:00** · Hey everyone.',
-		'',
-		'**0:01** · My name is Miles Tost.',
-	].join('\n');
-
-	it('separates the cues from what came before them', () => {
-		const { before, transcript } = splitTranscript(CONTENT);
-		expect(before).toBe('![](https://www.youtube.com/watch?v=abc)');
-		expect(transcript).toBe('**0:00** · Hey everyone.\n\n**0:01** · My name is Miles Tost.');
-		// The heading is dropped, so a template supplies its own.
-		expect(transcript).not.toContain('Transcript');
-	});
-
-	it('says nothing when there is no transcript to split', () => {
-		expect(splitTranscript('![](https://www.youtube.com/watch?v=abc)')).toEqual({});
-		expect(splitTranscript('Just an article about transcripts.')).toEqual({});
-		// A heading with nothing under it is not a transcript.
-		expect(splitTranscript('Body\n\n## Transcript\n\n   ')).toEqual({});
 	});
 });

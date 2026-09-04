@@ -82,11 +82,10 @@ reference](https://help.obsidian.md/web-clipper/variables). Some things the docs
   which Defuddle works out for itself. When a variable looks wrong, `{{meta:name:…}}` and
   `{{meta:property:…}}` expose the page's raw meta tags and are the general escape hatch.
 
-Two variables are **Defuddler's own**, and a template using them will not work in the Web Clipper.
-Defuddle buries a YouTube transcript inside `{{content}}` under a heading a template cannot change,
-so `{{transcript}}` is the cues on their own, without that heading, and
-`{{contentWithoutTranscript}}` is everything before it. Both are empty on any page without a
-transcript.
+Defuddle's site extractors contribute variables of their own. On a YouTube video `{{transcript}}` is
+the cues, separate from `{{content}}` which carries them under a `## Transcript` heading. It is empty
+when the captions could not be fetched, which is also why it is invisible to anything running without
+a network.
 
 ## What it does not do
 

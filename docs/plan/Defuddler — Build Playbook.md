@@ -757,16 +757,26 @@ The body is compiled separately and keeps every line break it was given.
 in `test/templates.test.ts` from M1, as a behaviour that would look like a bug. It duly did. The fix
 is a template edit, not code: use `{{author}}`.
 
-**`{{transcript}}` was never a variable.** Johan's template had a `## Transcript` section followed by
-`{{transcript}}`, and an unresolved variable compiles to an empty string — so every YouTube clip had
-an empty heading and nobody was told. The transcript was there all along, inside `{{content}}`, under
-a heading a template cannot change.
+**`{{transcript}}` is a variable, and 1.0.2 broke it.** Recorded here because the mistake is more
+instructive than the fix.
 
-Rather than leave a trap, `{{transcript}}` now exists: `splitTranscript` in `src/youtube.ts` cuts
-Defuddle's markdown at the transcript heading, and `clipHtml` adds `{{transcript}}` (the cues,
-heading removed) and `{{contentWithoutTranscript}}` (everything before). **These two are ours, not
-upstream's**, so a template using them will not work in the Web Clipper — the price of being able to
-ask for the transcript at all.
+Defuddle's site extractors contribute their own variables through `result.variables`, which
+`buildVariables` merges in as `extractedContent`. The YouTube extractor contributes `transcript` —
+4,810 characters of it on the multitrack fixture. It had been working all along.
+
+It looked absent because **every probe used to reach that conclusion refused the network**, and the
+variable only exists when the captions were actually fetched. From that absence came a wrong
+generalisation, and 1.0.2 shipped a `{{transcript}}` of its own that overwrote a working one. Johan
+caught it: *"transcript was working fine before you made the change."*
+
+Reverted in 1.0.3, along with the `{{contentWithoutTranscript}}` that came with it — a variable
+invented to solve a problem that did not exist.
+
+**The guard that was missing now exists.** `test/clip.test.ts` asserts `{{transcript}}` reaches a
+template, and it has to leave the machine to do it, so it skips when offline. It also has to hand
+Defuddle `globalThis.fetch`: jsdom's own fetch is CORS-bound, which is the same distinction that
+makes `requestUrl` necessary inside Obsidian, and the same one that made the variable look absent in
+the first place.
 
 ## 9. M3 — Settings
 

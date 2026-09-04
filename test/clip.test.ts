@@ -27,6 +27,7 @@ const SOURCE_URLS: Record<string, string> = {
     'https://apnews.com/article/apple-iphone-keyboard-typing-tricks-shortcuts-78fd9488e6a1ebc0840be8a0d1d42032',
   'github-readme.html': 'https://github.com/obsidianmd/obsidian-clipper',
   'youtube-watch.html': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+  'youtube-multitrack.html': 'https://www.youtube.com/watch?v=G3kuMWediSQ',
   'instagram-wall.html': 'https://www.instagram.com/explore/',
 };
 
@@ -159,24 +160,31 @@ describe('readableText', () => {
   });
 });
 
-describe('the transcript variables', () => {
-  // {{transcript}} and {{contentWithoutTranscript}} are ours, not upstream's — a template using them
-  // will not work in the Web Clipper. They exist because Defuddle buries the transcript inside
-  // {{content}} under a heading a template cannot change.
-  const template = {
-    ...TEMPLATE,
-    properties: [],
-    noteContentFormat: 'BEFORE[{{contentWithoutTranscript}}] TRANSCRIPT[{{transcript}}]',
-  };
+/**
+ * The guard that was missing.
+ *
+ * `{{transcript}}` is Defuddle's, supplied by its YouTube extractor through `result.variables` — but
+ * only when the captions were actually fetched. Every other test here refuses the network, which
+ * makes the variable invisible, and reasoning from that absence is how a working variable came to be
+ * overwritten in 1.0.2. So this one leaves the machine, and skips when it cannot.
+ */
+const online = await fetch('https://www.youtube.com/generate_204', { signal: AbortSignal.timeout(4000) })
+  .then(() => true)
+  .catch(() => false);
 
-  it('are empty on a page with no transcript, and do not leak the placeholder', async () => {
+describe("Defuddle's own extractor variables", () => {
+  it.runIf(online)('reach the template as {{transcript}}', async () => {
     const result = await clipHtml({
-      html: readFileSync(join(fixtures, 'apnews-article.html'), 'utf8'),
-      url: SOURCE_URLS['apnews-article.html'],
-      template,
-      defuddle: { fetch: noNetwork },
+      html: readFileSync(join(fixtures, 'youtube-multitrack.html'), 'utf8'),
+      url: SOURCE_URLS['youtube-multitrack.html'],
+      template: { ...TEMPLATE, properties: [], noteContentFormat: 'T[{{transcript}}]' },
+      // jsdom's own fetch is CORS-bound, so Defuddle must be handed Node's — the same distinction
+      // that makes requestUrl necessary inside Obsidian.
+      defuddle: { language: 'en-US', fetch: globalThis.fetch },
     });
 
-    expect(result.content).toBe('BEFORE[] TRANSCRIPT[]');
+    expect(result.content).toMatch(/^T\[/);
+    expect(result.content).toContain('Miles Tost');
+    expect(result.content.length).toBeGreaterThan(1000);
   });
 });
