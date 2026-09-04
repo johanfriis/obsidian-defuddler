@@ -1,8 +1,8 @@
 # Extraction fixtures
 
-Inputs for `test/extraction.test.ts`, the regression harness D14 asks for: every submodule or
-defuddle bump runs it before anything else (§14), so a change in what comes out of a page shows up
-as a moved snapshot rather than as a surprise on the phone.
+Inputs for `test/extraction.test.ts`. Every submodule or Defuddle bump runs it before anything else
+(§14 of the playbook), so a change in what comes out of a page shows up as a moved snapshot rather
+than as a surprise on the phone.
 
 ## How these were captured
 
@@ -14,10 +14,10 @@ UA="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Ch
 curl -sSL -A "$UA" "<url>" -o <name>.html
 ```
 
-The string tracks `CHROME_MOBILE_UA` in `ReaderActivity.kt` — `Android 10; K` is Chrome's frozen
-reduced-UA pair, sent by every real Chrome on every device. The five committed fixtures predate
-that correction and were captured with `Android 16; K`; servers treat the two identically, so they
-were not re-captured.
+`Android 10; K` is Chrome's frozen reduced-UA pair, sent by every real Chrome on every device, and
+it is what `DEFAULT_USER_AGENT` in `src/fetch.ts` sends. Some of the fixtures were captured with
+`Android 16; K` before that was corrected; servers treat the two identically, so they were not
+re-captured.
 
 The source URL for each file is in `SOURCE_URLS` in the test — Defuddle needs it for the domain and
 for resolving relative links, so a fixture without one is not usable.
@@ -29,7 +29,7 @@ for resolving relative links, so a fixture without one is not usable.
 | `github-readme.html` | A README inside a heavy app shell. |
 | `youtube-watch.html` | Title, author, the embed, and the **transcript**. |
 | `youtube-multitrack.html` | Eleven caption tracks, and the trap that comes with them (below). |
-| `instagram-wall.html` | A page that defeats extraction entirely — M2.5's bookmark fallback. |
+| `instagram-wall.html` | A page that defeats extraction entirely — P10's case. |
 
 ## What these fixtures cannot tell you
 
@@ -38,9 +38,9 @@ than assumed:
 
 - **github's shadow DOM is simply not here.** The captured file contains zero `attachShadow` calls
   and zero declarative `<template shadowroot>` elements, because the live page attaches its shadow
-  roots from script. B3's finding that `flatten-shadow-dom.js` is refused on github by `script-src`
-  (§2) therefore **cannot be reproduced by any `curl` fixture** — it needs a hydrated capture from a
-  real browser, and remains a device-only check.
+  roots from script. So nothing about github's shadow DOM **can be reproduced by any `curl`
+  fixture** — it needs a hydrated capture from a real browser, which is what the deferred rendered
+  source (§13 of the playbook) would provide.
 - **The YouTube transcript is not here at all.** *Corrected at M0/S1, 2026-09-04; the previous text
   claimed the opposite.* `YoutubeExtractor` does not read the transcript out of the inline player
   JSON — that parse throws a `SyntaxError`. It fetches it from YouTube's API during `parseAsync`,

@@ -10,7 +10,7 @@ vault API rather than handed over a URI.
 
 ## Install
 
-Through [BRAT](https://github.com/TfTHacker/obsidian42-brat): add `johanfriis/obsidian-reader` as a
+Through [BRAT](https://github.com/TfTHacker/obsidian42-brat): add `johanfriis/obsidian-defuddler` as a
 beta plugin, then enable Defuddler in community plugins. Requires Obsidian 1.13 or later.
 
 ## Use

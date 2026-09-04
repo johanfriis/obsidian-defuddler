@@ -19,6 +19,7 @@ main.js.map
 .env
 .env.*
 
-# Android build outputs. The app itself lives on the android-reader branch; what is left here is
-# untracked Gradle and SDK state, kept so a branch switch does not rebuild 84 MB from scratch.
+# Leftover Gradle and SDK state from the Android app this project began as. The app itself lives on
+# the android-reader branch of the obsidian-reader repository; this is untracked local build cache,
+# kept only so switching to that branch does not rebuild it from scratch.
 android/

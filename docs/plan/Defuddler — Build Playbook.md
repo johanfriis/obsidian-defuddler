@@ -4,10 +4,13 @@ An Obsidian plugin that reads a URL, runs it through Defuddle, applies a templat
 and writes the note. Clipping happens **inside Obsidian**, on desktop and on mobile.
 
 This is the live, step-by-step guide and **the authoritative document** — milestones, acceptance
-criteria, decisions, and the dev loop all live here. It supersedes the Android playbook, which stays
-readable at [docs/android](../android) and on the `android-reader` branch. Where this document says
-`D2`, `D31` and so on it means a decision in *that* document; this document numbers its own
-decisions `P1`, `P2`, … so the two can never be confused.
+criteria, decisions, and the dev loop all live here.
+
+**This project began as an Android app** that hosted the Web Clipper extension in a pair of WebViews
+and saved through `obsidian://new`. That work reached a working state and was then abandoned for the
+plugin, for the reasons P1 and P2 record. Its own playbook is not in this repository; where a finding
+from it still carries weight here it is restated rather than cited, so nothing in this document
+depends on a document you cannot read.
 
 **Definition of done for v1:** Johan copies a link on the phone or the desktop, runs one command,
 picks a template from a list that already has the right one selected, and the note lands in the vault
@@ -49,8 +52,8 @@ Bumping either pin runs the extraction harness first (§14) — never casually.
 
 ### Governing principle — defer to the human
 
-*Carried over from the Android playbook, where Johan stated it on 2026-09-01. It outranks the table
-below where they conflict.*
+*Stated by Johan on 2026-09-01, during the work that preceded this. It outranks the table below where
+they conflict.*
 
 **When the machine could decide or the human could, the human decides.** Prefer an action the human
 takes over a default the machine applies; prefer leaving them in front of a working result over
@@ -66,15 +69,15 @@ nothing still opens the template picker).
 | # | Decision | Rationale |
 |---|---|---|
 | **P1** | **One source: fetch the URL with `requestUrl()`. No webview, no iframe, on any platform.** | The premise that mobile needs a rendered DOM does not survive the evidence already in this repo. `jsbridge/test/fixtures/` are `curl` captures — server bytes, no JavaScript ever executed — and `extraction.test.ts` passes against them: stephango 13,584 chars with title/author/1400+ words, github 6,328, apnews 3,901, youtube 2,780 **including the full transcript**, instagram nothing. Four of five, and the transcript survives because Defuddle's `YoutubeExtractor` reads inline player JSON rather than the rendered page. The rendered DOM buys exactly one measured thing: github's shadow DOM. That is not worth a second code path in v1. Reversible and *additive* — see P2's note and §13. |
-| **P2** | **Clipping happens inside Obsidian; notes are written with the vault API.** ~~…so that on-create automations fire.~~ **Narrowed by Johan, 2026-09-04: on-create automations are an outdated requirement and are out of scope.** | This is still the whole reason to pivot, and it retires `D2`, `D18` and `D36` outright — no `obsidian://new`, no clipboard as transport, no size ceiling, no foregrounding, and the note enters the index as it is written. What it no longer claims is that Templater's on-create trigger fires, which was `G0/A5`'s finding turned into a benefit. **That leg is gone and the decision does not need it**: everything above is independent of it, and so is the fact that one build serves desktop and phone. It does mean the plugin-over-app case is one leg shorter than P1's write-up implied — worth knowing, not worth re-litigating. ~~**Cost:** `D2` credited the URI with dedup/append/overwrite for free, and that credit is a debt.~~ **Retired 2026-09-04 with M4** — Johan wants only `create`, so five of the six behaviours were never owed. What the URI did give us free and we do now write is deduplicating a colliding note name, and that is eight lines. |
-| **P3** | **Upstream's engine is what we build on. We ship none of its UI. ~~We consume `api.ts`; we do not fork it~~ — narrowed by GATE G3 on 2026-09-04: its `clip()` wrapper is unusable in a browser and is reimplemented in `src/clip.ts` over the same helpers. The helpers, the template compiler, the filters and the frontmatter generator are still upstream's, untouched.** | `api.ts` is upstream's own environment-agnostic entry point: `clip({html, url, template, documentParser})` plus `matchTemplate()`. It is the entire clip pipeline with no `browser.*` in its import graph (§3 lists the 70 files it does pull). This is what makes the pivot cheap, and it is the opposite of `D31`, which hosted upstream's *extension* — that decision bought a UI and paid for it with the polyfill shim, two WebViews, a message router and bundle injection. Here we buy only the engine and build our own small UI, because Obsidian already gives us modals, settings and a command palette. |
-| **P4** | **Templates are markdown files in the vault, in a configurable folder. `matchTemplate()` preselects; the human confirms.** | In-vault means editable and syncable anywhere, with no separate store to keep in step. Preselect-don't-apply follows the governing principle, and matches `M3.3` in the old playbook. The file format is settled in **GATE G1** — markdown, with the note's frontmatter in a fenced block and its types taken from the vault. |
+| **P2** | **Clipping happens inside Obsidian; notes are written with the vault API.** ~~…so that on-create automations fire.~~ **Narrowed by Johan, 2026-09-04: on-create automations are an outdated requirement and are out of scope.** | This is still the whole reason to pivot, and it retires the entire save path the Android app was built around — no `obsidian://new`, no clipboard as transport, no size ceiling, no foregrounding, and the note enters the index as it is written. What it no longer claims is that Templater's on-create trigger fires, which was a measurement from that work turned into a benefit. **That leg is gone and the decision does not need it**: everything above is independent of it, and so is the fact that one build serves desktop and phone. It does mean the plugin-over-app case is one leg shorter than P1's write-up implied — worth knowing, not worth re-litigating. ~~**Cost:** the URI implemented dedup, append and overwrite for free, and that credit is a debt.~~ **Retired 2026-09-04 with M4** — Johan wants only `create`, so five of the six behaviours were never owed. What the URI did give us free and we do now write is deduplicating a colliding note name, and that is eight lines. |
+| **P3** | **Upstream's engine is what we build on. We ship none of its UI. ~~We consume `api.ts`; we do not fork it~~ — narrowed by GATE G3 on 2026-09-04: its `clip()` wrapper is unusable in a browser and is reimplemented in `src/clip.ts` over the same helpers. The helpers, the template compiler, the filters and the frontmatter generator are still upstream's, untouched.** | `api.ts` is upstream's own environment-agnostic entry point: `clip({html, url, template, documentParser})` plus `matchTemplate()`. It is the entire clip pipeline with no `browser.*` in its import graph (§3 lists the 70 files it does pull). This is what makes the pivot cheap, and it is the opposite of what the Android app did — it hosted upstream's *extension*, which bought a UI and paid for it with a webextension polyfill shim, two WebViews, a message router and bundle injection. Here we buy only the engine and build our own small UI, because Obsidian already gives us modals, settings and a command palette. |
+| **P4** | **Templates are markdown files in the vault, in a configurable folder. `matchTemplate()` preselects; the human confirms.** | In-vault means editable and syncable anywhere, with no separate store to keep in step. Preselect-don't-apply follows the governing principle. The file format is settled in **GATE G1** — markdown, with the note's frontmatter in a fenced block and its types taken from the vault. |
 | **P5** | **Settings live in Obsidian's settings tab, declared with `getSettingDefinitions()`. No `display()`. All persisted state sits inside `plugin.settings`.** | **Corrected in Phase 0, 2026-09-03.** This decision first read "built with `display()`", on the belief that Obsidian here was 1.8.10 and that the declarative API did not exist yet. Both halves were wrong: the version came from a stale `Info.plist`, and the machine is on 1.14.0. With `minAppVersion` at 1.13.0 the linter's rule is to implement the definitions and *delete* `display()`, since a non-empty definition list bypasses it anyway. The single-blob rule is unchanged and still matters, because Obsidian's auto-persist clobbers sibling keys written with `saveData()`. |
-| **P6** | **Distribution is BRAT only. No community-plugin submission.** | Personal tool, same call as `D34`. Consequence: the community scanner's Scorecard is *guidance*, not a gate. We follow its rules where they are cheap and right (no `fetch()`, sentence case, `registerDomEvent`, no `!important`) and skip the submission ceremony. If that ever changes, the name and the ESLint pass are the two things to revisit. |
+| **P6** | **Distribution is BRAT only. No community-plugin submission.** | Personal tool. Consequence: the community scanner's Scorecard is *guidance*, not a gate. We follow its rules where they are cheap and right (no `fetch()`, sentence case, `registerDomEvent`, no `!important`) and skip the submission ceremony. If that ever changes, the name and the ESLint pass are the two things to revisit. |
 | **P7** | **The plugin is named Defuddler, id `defuddler`.** | Clears Obsidian's naming rules: no "Obsidian" in it, does not start with "Obsi", does not end with "dian". It does borrow kepano's library name, which reads faintly official — acceptable for a BRAT-only personal tool per P6, and a reason to rename before any submission. |
-| **P8** | **The clipboard is a prefill, never a requirement.** | `navigator.clipboard.readText()` is the shakiest API in this design on mobile: iOS WKWebView gates it behind a user gesture and can throw or prompt. So the command always opens a prompt with the URL field filled in when the read worked and empty when it didn't. This is `D36` learned from the other side — a clipboard failure must be visible and recoverable, not silent. |
+| **P8** | **The clipboard is a prefill, never a requirement.** | `navigator.clipboard.readText()` is the shakiest API in this design on mobile: iOS WKWebView gates it behind a user gesture and can throw or prompt. So the command always opens a prompt with the URL field filled in when the read worked and empty when it didn't. The Android app hit the mirror image of this — a clipboard *write* that could fail silently — and the lesson generalises: a clipboard failure must be visible and recoverable. |
 | **P9** | **`obsidian://clip?url=…` ships in v1.** | It is a handful of lines via `registerObsidianProtocolHandler`, and it is the seam every future entry point plugs into: a share-target app, a bookmarklet, a shortcut. Shipping it in v1 costs almost nothing and stops the URL parsing from being retrofitted later. |
-| **P10** | **Extraction that yields nothing is not an error.** | The Instagram fixture is the case: Defuddle returns a title and zero words. The picker still opens, the template still applies, and what lands is a note with frontmatter and no body. `D13` reached the same place by a different route — a bookmark clip made by hand is still a bookmark clip — and the governing principle forbids dropping the human into a dead end. |
+| **P10** | **Extraction that yields nothing is not an error.** | The Instagram fixture is the case: Defuddle returns a title and zero words. The picker still opens, the template still applies, and what lands is a note with frontmatter and no body. The Android work reached the same place by a different route — a bookmark clip made by hand is still a bookmark clip — and the governing principle forbids dropping the human into a dead end. |
 | **P11** | **The reader view is out of scope for v1.** | Option 2 from the pivot conversation. Its value is preview and highlight-to-clip, **not** better extraction, because its input is still the fetched HTML. Upstream's own reader is 2805 lines of `browser.runtime`/`browser.storage` and must not be ported — see §13. |
 
 ## 2. Gate outcomes
@@ -224,9 +227,9 @@ fetch buys — as S1 predicted.
 outdated requirement, so P2 no longer claims that and the question is out of scope. For the record,
 had it been run it would have measured nothing useful — Sanctum has a Templater folder template
 mapped for `Clippings`, but both `trigger_on_file_creation` and `enable_folder_templates` are off,
-so nothing fires there today however a note is created. That is also a reason to treat `G0/A5`, the
-Android measurement that `obsidian://new` does not fire the trigger, as unsettled rather than as
-evidence for anything here.
+so nothing fires there today however a note is created. That is also a reason to treat the earlier
+measurement that `obsidian://new` does not fire the trigger as unsettled rather than as evidence for
+anything here.
 
 **What S4 did answer turned out not to be needed.** It established that daily-note resolution needs
 no private API — `daily-notes.json` under `app.vault.configDir` carries `folder`, `template` and
@@ -373,7 +376,7 @@ frontmatter + body, ready to write. Our `DocumentParser` is one line: `new DOMPa
    schema triggers are wanted later, run Defuddle first and hand the parsed document to `clip()` via
    `parsedDocument` so it is not parsed twice — the option exists for exactly this.
 4. **`saveToObsidian()` in `src/utils/obsidian-note-creator.ts` is what we replace.** Reading it is
-   the fastest way to see what the URI used to do for the Android build: it delegates `append`,
+   the fastest way to see what the URI used to do for us: it delegates `append`,
    `prepend`, `overwrite` and daily notes to the URI's query parameters. **We implement none of them**
    — see M4 — so what we replace is the create-and-name-it part alone.
 5. **Property types decide the YAML shape, and `clip()` lets us supply them out of band.**
@@ -444,7 +447,6 @@ vitest.config.mts       test/, including test/stubs/ — a hostile `obsidian` mo
                         and an in-memory vault, so the pipeline is testable
 vendor/obsidian-clipper the pinned submodule
 docs/plan/              this document
-docs/android/           the superseded Android playbook, until absorbed
 ```
 
 **`jsbridge/` is gone as of Phase 0.** Its submodule moved to `vendor/obsidian-clipper` and its
@@ -568,8 +570,8 @@ reaches the network, and a second clip of the same page refuses to clobber the f
 
 **One bug the tests caught, worth naming because it was predicted.** The "no readable body" check
 first tested the body's *length*, which calls Instagram's 22 KB of base64 image and YouTube's
-48-character embed link successes. `D13` in the Android playbook recorded exactly this trap — the
-test must be on readable text, never on an empty content string. `readableText()` in `src/clip.ts`
+48-character embed link successes. The Android work had recorded exactly this trap — the test must be
+on readable text, never on an empty content string. `readableText()` in `src/clip.ts`
 is that check, and it has its own tests.
 
 ### Tasks
@@ -839,9 +841,10 @@ Two things worth knowing about the handler itself:
 - **Reader view (P11).** A view over `clip()`'s output for preview and highlight-to-clip. Build it
   fresh; do not port upstream's `reader.ts`.
 - **Mobile rendered source.** Only reachable through an external app that renders the page and hands
-  over the HTML. `android-reader` already loads pages in a WebView and already moved ~500 KB of text
-  into Obsidian through the clipboard, so it is a source of parts. It would forward rendered HTML to
-  `obsidian://clip`, not clip on its own.
+  over the HTML. The abandoned Android app already loaded pages in a WebView and already moved ~500 KB
+  of text into Obsidian through the clipboard, so it is a source of parts — it lives on in the
+  `obsidian-reader` repository. It would forward rendered HTML to `obsidian://clip`, not clip on its
+  own.
 - **Highlights.** `{{highlights}}` needs a highlighter, which needs the reader view first.
 
 ## 14. Cross-cutting engineering notes
@@ -849,9 +852,9 @@ Two things worth knowing about the handler itself:
 - **`requestUrl()`, never `fetch()`.** `fetch` is CORS-bound in the renderer; `requestUrl` is not, and
   it is the documented API. This is also a community-scanner rule we follow because it is right, not
   because of P6.
-- **Bumping the submodule or Defuddle runs the extraction harness first.** Inherited from `D14` and
-  the single most valuable thing carried over from the Android build: a changed extraction shows up as
-  a moved snapshot instead of a surprise on the phone.
+- **Bumping the submodule or Defuddle runs the extraction harness first.** The single most valuable
+  thing carried over from the Android work: a changed extraction shows up as a moved snapshot instead
+  of a surprise on the phone.
 - **Never hand-edit a fixture.** A hand-authored DOM guards the fixture, not the site.
 - **Popout windows and timers.** `registerDomEvent` rather than paired add/remove listeners;
   `registerEvent`, `addCommand`, `registerInterval` for everything with a lifetime.
@@ -876,6 +879,6 @@ Two things worth knowing about the handler itself:
 ## 16. Licensing
 
 `obsidian-clipper` and `defuddle` are both MIT and stay in the tree as a submodule and an npm
-dependency. `D34` settled that this is a personal tool and that the branding sweep and licence
-notices were out of scope; P6 keeps that true. If P6 ever reverses, attribution is the first thing to
+dependency. This is a personal tool, so the branding sweep and licence notices a published plugin
+would need are out of scope; P6 keeps that true. If P6 ever reverses, attribution is the first thing to
 revisit.
