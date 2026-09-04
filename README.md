@@ -70,6 +70,21 @@ just flatter.
 string wrapped in slashes is a regular expression. The match is only ever a preselection — the
 picker still opens and you still choose.
 
+**A prefix trigger has to cover every form of the URL you actually paste**, and a share sheet rarely
+hands you the one you would type. YouTube is the worst of them: the Android app shares
+`youtu.be/…`, the mobile site gives `m.youtube.com/…`, and a desktop browser gives
+`www.youtube.com/watch?v=…`. Published templates tend to carry only the last, so a template imported
+from elsewhere will quietly fail to match anything shared from a phone.
+
+```yaml
+triggers:
+  - https://www.youtube.com/watch?v=
+  - https://m.youtube.com/watch?v=
+  - https://youtu.be/
+```
+
+The URL form affects matching only. Extraction does not care which one you give it.
+
 Variables, filters and the `{{selector:…}}` and `{{schema:…}}` families are upstream's, and are
 documented in the [Web Clipper's template
 reference](https://help.obsidian.md/web-clipper/variables). Some things the docs do not spell out:

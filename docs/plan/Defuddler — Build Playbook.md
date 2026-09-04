@@ -748,6 +748,22 @@ outright. Nobody had hit it because `{{description}}` on a YouTube page used to 
 boilerplate. Property values are now flattened onto one line before the frontmatter is generated.
 The body is compiled separately and keeps every line break it was given.
 
+### Found in use — a trigger that only knew one URL, 2026-09-04
+
+**Template matching still looked broken on mobile after 1.0.3, and this time it was the template.**
+A prefix trigger of `https://www.youtube.com/watch?v=` cannot match `youtu.be/…`, which is what
+YouTube's Android share sheet hands out, or `m.youtube.com/…`, which the mobile site gives. Johan's
+clips show all three forms. Adding the other prefixes to the template fixed it; no code changed.
+
+**The false lead is the part worth recording.** A single probe reported that a `youtu.be` URL
+extracted 262 characters with no transcript, against 6,788 with one for the canonical form, and a
+whole URL-canonicalisation feature was built on that reading — until Johan pointed at a mobile clip
+with a full transcript and a `youtu.be` source. Four repeat runs: 4,810 characters every time, for
+both forms. The single reading was the transcript fetch's known flakiness, **which this document had
+already recorded twice** — once when it produced a stray 262 during M0, and once as the reason the
+network tests are opt-in. Measuring once against a signal you have already written down as
+intermittent is not a measurement. The feature was reverted before it shipped.
+
 ### Found in use — the author, and a variable that never existed, 2026-09-04
 
 **`{{schema:author}}` is empty on every YouTube video, and correctly so.** The page's JSON-LD is a
