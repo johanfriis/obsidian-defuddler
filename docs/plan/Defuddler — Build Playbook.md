@@ -8,9 +8,10 @@ criteria, decisions, and the dev loop all live here.
 
 **This project began as an Android app** that hosted the Web Clipper extension in a pair of WebViews
 and saved through `obsidian://new`. That work reached a working state and was then abandoned for the
-plugin, for the reasons P1 and P2 record. Its own playbook is not in this repository; where a finding
-from it still carries weight here it is restated rather than cited, so nothing in this document
-depends on a document you cannot read.
+plugin, for the reasons P1 and P2 record. It lives on the `android-reader` branch of the
+`obsidian-reader` repository, along with its own playbook. None of that is here; where a finding from
+it still carries weight it is restated rather than cited, so nothing in this document depends on a
+document you cannot read.
 
 **Definition of done for v1:** Johan copies a link on the phone or the desktop, runs one command,
 picks a template from a list that already has the right one selected, and the note lands in the vault
