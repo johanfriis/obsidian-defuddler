@@ -427,6 +427,7 @@ src/templates.ts        the default template, the folder loader, trigger matchin
 src/template-file.ts    the G1 format: parse, serialise, and JSON import
 src/property-types.ts   the vault's property types, which win over a template's
 src/youtube-captions.ts the only file that knows what a YouTube page looks like
+src/uri.ts              what obsidian://clip should do, decided apart from doing it
 src/settings.ts         the persisted settings; the tab is M3
 src/save.ts             create, and Obsidian's duplicate-naming convention
 src/ui/                 url-prompt, template-picker, json-import
@@ -771,15 +772,34 @@ page is kept beside the first, neither refused nor silently replacing it.
 
 ## 11. M5 — `obsidian://clip`
 
-`registerObsidianProtocolHandler('clip', …)` taking `url` and an optional `template` name. Same
-pipeline as M1 from the URL onward. Note that an `obsidian://` link without a `vault=` parameter opens
-whichever vault was last used, so anything generating these links should carry the vault name.
+**Built 2026-09-04.** `registerObsidianProtocolHandler('clip', …)` taking `url` and an optional
+`template`. From the URL onward it is M1's pipeline, unchanged — which is what `src/pipeline.ts`
+existed for.
+
+The rules live in `src/uri.ts`, apart from the handler that acts on them, so they are testable
+without an app around them. There are three:
+
+- **A named template is honoured.** Someone who wrote `&template=Recipe` chose it.
+- **An unknown name is said out loud and then falls through to the picker.** Not an error, because
+  the clip should not be thrown away, and not a silent substitution either — clipping with the wrong
+  shape because a template got renamed is the kind of quiet wrongness this playbook keeps finding.
+- **A missing `url` complains.** A URI that does nothing at all is the worst answer.
+
+Two things worth knowing about the handler itself:
+
+- **On a phone this may be what launches Obsidian**, so the template folder can still be loading when
+  the URI arrives. The handler waits for it before deciding anything that depends on it.
+- **An `obsidian://` link without a `vault=` parameter opens whichever vault was last used.** Anything
+  generating these should carry the vault name. To try it here:
+  `obsidian://clip?vault=Sanctum&url=https%3A%2F%2Fstephango.com%2Fvault`
 
 ### Acceptance
 
-- [ ] `obsidian://clip?url=…` from a browser and from another app on the phone both clip.
-- [ ] A missing or malformed `url` produces a message, not a silent no-op.
-- [ ] `obsidian://clip?url=…&template=…` uses the named template and says so if the name is unknown.
+- [x] A named template is used as given; an unknown one says so and offers the picker.
+- [x] A missing or blank `url` produces a message rather than a silent no-op.
+- [x] Whitespace around either parameter is trimmed, since a share sheet often adds it.
+- [ ] **Needs the app:** `obsidian://clip?url=…` from a browser on the desktop, and from another app
+      on the phone.
 
 ## 12. v1 release checklist — GATE G2
 

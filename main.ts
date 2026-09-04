@@ -1,10 +1,12 @@
 import { Notice, Plugin, TAbstractFile, debounce, normalizePath } from 'obsidian';
+import type { ObsidianProtocolData } from 'obsidian';
 import type { Template } from './vendor/obsidian-clipper/src/api';
 import { clipUrlToVault } from './src/pipeline';
 import { readVaultPropertyTypes } from './src/property-types';
 import { DEFAULT_SETTINGS, DefuddlerSettingTab, withDefaults } from './src/settings';
 import type { DefuddlerSettings } from './src/settings';
 import { DEFAULT_TEMPLATE, ensureTemplateFolder, loadTemplates, matchByUrl } from './src/templates';
+import { resolveClipUri } from './src/uri';
 import { JsonImport } from './src/ui/json-import';
 import { TemplatePicker } from './src/ui/template-picker';
 import { UrlPrompt } from './src/ui/url-prompt';
@@ -38,6 +40,14 @@ export default class DefuddlerPlugin extends Plugin {
 			callback: () => {
 				void this.importTemplate();
 			},
+		});
+
+		// `obsidian://clip?url=…`, optionally `&template=…`. The seam every future entry point plugs
+		// into: a share-target app, a bookmarklet, a shortcut. Note that an obsidian:// link without
+		// a `vault=` parameter opens whichever vault was last used, so whatever generates these
+		// should carry the vault name.
+		this.registerObsidianProtocolHandler('clip', (params) => {
+			void this.clipFromUri(params);
 		});
 
 		// The folder is seeded and read once the vault is indexed, not during onload — a template
@@ -100,25 +110,40 @@ export default class DefuddlerPlugin extends Plugin {
 	}
 
 	/**
+	 * Handles `obsidian://clip`.
+	 *
+	 * On a phone this may be what *launches* Obsidian, so the templates can still be loading when it
+	 * arrives — hence the wait. A named template is an explicit choice and is used as given; an
+	 * unknown name says so and falls back to the normal path rather than quietly clipping with the
+	 * wrong shape.
+	 */
+	private async clipFromUri(params: ObsidianProtocolData): Promise<void> {
+		// On a phone this may be what *launches* Obsidian, so the templates can still be loading when
+		// the URI arrives. Resolve the folder before deciding anything that depends on it.
+		if (!this.templates.length) await this.refreshTemplates(true);
+
+		const outcome = resolveClipUri(params, this.templates);
+		if (outcome.kind === 'error') {
+			new Notice(outcome.message, 8000);
+			return;
+		}
+		if (outcome.kind === 'clip') {
+			await this.clip(outcome.url, outcome.template);
+			return;
+		}
+		if (outcome.message) new Notice(outcome.message, 8000);
+		await this.pickTemplateAndClip(outcome.url);
+	}
+
+	/**
 	 * The picker opens whenever there is a choice to make. With exactly one template there is none,
 	 * so it does not — deferring to the human means letting them decide, not making them confirm.
 	 */
 	private async pickTemplateAndClip(url: string): Promise<void> {
 		const available = this.templates.length ? this.templates : [DEFAULT_TEMPLATE];
 
-		const clip = async (template: Template) => {
-			await clipUrlToVault(this.app, {
-				url,
-				template,
-				propertyTypes: await readVaultPropertyTypes(this.app),
-				outputFolder: this.settings.outputFolder,
-				open: this.settings.openAfterClipping,
-				userAgent: this.settings.userAgent,
-			});
-		};
-
 		if (available.length === 1) {
-			await clip(available[0]);
+			await this.clip(url, available[0]);
 			return;
 		}
 
@@ -132,8 +157,20 @@ export default class DefuddlerPlugin extends Plugin {
 			: 'your default template';
 
 		new TemplatePicker(this.app, available, preselected, reason, (template) => {
-			void clip(template);
+			void this.clip(url, template);
 		}).open();
+	}
+
+	/** One template, one URL, everything else from settings. */
+	private async clip(url: string, template: Template): Promise<void> {
+		await clipUrlToVault(this.app, {
+			url,
+			template,
+			propertyTypes: await readVaultPropertyTypes(this.app),
+			outputFolder: this.settings.outputFolder,
+			open: this.settings.openAfterClipping,
+			userAgent: this.settings.userAgent,
+		});
 	}
 
 	private async importTemplate(): Promise<void> {
