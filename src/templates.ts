@@ -2,7 +2,7 @@ import { TFile, TFolder, normalizePath } from 'obsidian';
 import type { App } from 'obsidian';
 import { matchTemplate } from '../vendor/obsidian-clipper/src/api';
 import type { Template } from '../vendor/obsidian-clipper/src/api';
-import { TemplateFileError, buildTemplate, serialiseTemplate } from './template-file';
+import { TemplateFileError, buildTemplate, serialiseTemplate, splitFrontmatter } from './template-file';
 
 /**
  * The template M2 writes into the vault on first run, and the one M1 clipped with.
@@ -41,12 +41,6 @@ export interface LoadedTemplates {
 	errors: TemplateLoadError[];
 }
 
-/** Everything between the opening and closing `---` of a file's own frontmatter, removed. */
-function stripFrontmatter(markdown: string): string {
-	const match = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(markdown);
-	return match ? markdown.slice(match[0].length) : markdown;
-}
-
 function collectMarkdown(folder: TFolder, into: TFile[]): void {
 	for (const child of folder.children) {
 		if (child instanceof TFolder) collectMarkdown(child, into);
@@ -57,10 +51,11 @@ function collectMarkdown(folder: TFolder, into: TFile[]): void {
 /**
  * Reads every template in the folder.
  *
- * A bad file names itself and is skipped; it never takes the others down with it. The frontmatter is
- * Obsidian's own parse rather than ours, so quoting and list syntax are its problem — which is also
- * why a file the metadata cache has not indexed yet reports as an error and is picked up by the next
- * reload rather than being guessed at.
+ * A bad file names itself and is skipped; it never takes the others down with it.
+ *
+ * The frontmatter is parsed here rather than read from `metadataCache` — see `splitFrontmatter` for
+ * why. In short: the cache is not always ready, and a template it had not indexed yet loaded with no
+ * triggers and no error, which is how URL matching came to look broken on mobile.
  */
 export async function loadTemplates(app: App, folderPath: string): Promise<LoadedTemplates> {
 	const folder = app.vault.getAbstractFileByPath(normalizePath(folderPath));
@@ -75,9 +70,8 @@ export async function loadTemplates(app: App, folderPath: string): Promise<Loade
 
 	for (const file of files) {
 		try {
-			const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter ?? null;
-			const markdown = stripFrontmatter(await app.vault.cachedRead(file));
-			templates.push(buildTemplate(file.basename, frontmatter, markdown));
+			const { frontmatter, body } = splitFrontmatter(await app.vault.cachedRead(file));
+			templates.push(buildTemplate(file.basename, frontmatter, body));
 		} catch (error) {
 			errors.push({
 				file: file.path,

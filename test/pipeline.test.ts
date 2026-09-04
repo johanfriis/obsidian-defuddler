@@ -147,6 +147,28 @@ describe('clipUrlToVault', () => {
 		expect(seen).toBe('Defuddler/test');
 	});
 
+	it('gives a YouTube clip the real description, not the boilerplate', async () => {
+		// End to end, because the extractor being right is only half of it — the value has to reach
+		// {{description}}, which means overriding what Defuddle put there.
+		serve(readFileSync(join(fixtures, 'youtube-multitrack.html'), 'utf8'));
+		const { app, contents } = fakeApp();
+
+		const file = await clipUrlToVault(app, {
+			url: 'https://www.youtube.com/watch?v=G3kuMWediSQ',
+			template: {
+				...DEFAULT_TEMPLATE,
+				properties: [{ name: 'description', value: '{{description}}' }],
+			},
+		});
+
+		const note = contents.get(file!.path)!;
+		expect(note).not.toMatch(/videos with (your )?friends|dine videoer/i);
+		// One line, whatever the description's own paragraphs looked like: frontmatter is flat, and a
+		// multi-line scalar there is a corrupted note waiting to happen.
+		expect(note).toMatch(/^description: ".{200,}"$/m);
+		expect(note).toContain('Songs of the Past');
+	});
+
 	it('keeps a second clip beside the first, the way Obsidian names a duplicate', async () => {
 		serve(readFileSync(join(fixtures, 'apnews-article.html'), 'utf8'));
 		const { app, contents } = fakeApp();

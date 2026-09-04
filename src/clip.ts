@@ -53,6 +53,13 @@ export interface ClipArgs {
 	parsedDocument?: Document;
 	/** Defuddle options. The whole reason this function exists; see the note above. */
 	defuddle?: Partial<DefuddleOptions>;
+	/**
+	 * Replaces `{{description}}` when the caller knows better than Defuddle does.
+	 *
+	 * There is one such caller: a YouTube watch page carries two `<meta name="description">` tags and
+	 * Defuddle takes the boilerplate one. See `src/youtube.ts`.
+	 */
+	description?: string;
 }
 
 export async function clipHtml(args: ClipArgs): Promise<ClipResult> {
@@ -85,7 +92,7 @@ export async function clipHtml(args: ClipArgs): Promise<ClipResult> {
 		contentHtml: defuddleResult.content,
 		url,
 		fullHtml: html,
-		description: defuddleResult.description,
+		description: args.description ?? defuddleResult.description,
 		favicon: defuddleResult.favicon,
 		image: defuddleResult.image,
 		published: defuddleResult.published,
@@ -107,10 +114,8 @@ export async function clipHtml(args: ClipArgs): Promise<ClipResult> {
 	const properties: Property[] = await Promise.all(
 		template.properties.map(async (property) => ({
 			name: property.name,
-			value: formatPropertyValue(
-				await compile(property.value),
-				property.type || 'text',
-				property.value,
+			value: flatten(
+				formatPropertyValue(await compile(property.value), property.type || 'text', property.value),
 			),
 			type: property.type,
 		})),
@@ -133,6 +138,22 @@ export async function clipHtml(args: ClipArgs): Promise<ClipResult> {
 		properties,
 		variables,
 	};
+}
+
+/**
+ * Collapses a property value onto one line, because frontmatter is where it is going.
+ *
+ * `generateFrontmatter` emits a scalar as `key: "value"`, escaping quotes but not newlines. A value
+ * that spans lines then relies on YAML's rules for multi-line flow scalars, whose continuation lines
+ * are supposed to be indented — these are not — and a line that happens to read `---` would end the
+ * frontmatter outright. A YouTube description is the value that made this reachable: several
+ * paragraphs, and until now `{{description}}` on those pages was a single line of boilerplate.
+ *
+ * Frontmatter is a flat store, so a newline in it has a cost and no upside. The note's *body* is
+ * compiled separately and keeps every line break it was given.
+ */
+function flatten(value: string): string {
+	return value.replace(/\s*\n\s*/g, ' ').trim();
 }
 
 /**

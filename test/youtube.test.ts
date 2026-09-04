@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { preferredEnglishTrack, readCaptionTracks, transcriptLanguageFor } from '../src/youtube-captions';
+import { descriptionFor, preferredEnglishTrack, readCaptionTracks, transcriptLanguageFor } from '../src/youtube';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 
@@ -60,5 +60,43 @@ describe('when the page is not what we expect', () => {
 		expect(transcriptLanguageFor('"captionTracks":')).toBeUndefined();
 		expect(transcriptLanguageFor('"captionTracks":[{"languageCode":')).toBeUndefined();
 		expect(transcriptLanguageFor('"captionTracks":[not json]')).toBeUndefined();
+	});
+});
+
+describe('the description a watch page really carries', () => {
+	// YouTube's server HTML has two `<meta name="description">` tags: its own boilerplate first,
+	// localised to wherever the request came from, and the video's real description second. Defuddle
+	// takes the first. The browser extension never sees this, because by the time it reads the page
+	// YouTube's script has replaced the boilerplate.
+	it('finds the real one on both fixtures, not the boilerplate', () => {
+		for (const fixture of ['youtube-watch.html', 'youtube-multitrack.html']) {
+			const html = readFileSync(join(fixtures, fixture), 'utf8');
+			expect(html.match(/<meta name="description"/g)).toHaveLength(2);
+
+			const description = descriptionFor(html)!;
+			expect(description).toBeTruthy();
+			// The boilerplate is short and generic in whatever language the server chose.
+			expect(description.length).toBeGreaterThan(60);
+			expect(description).not.toMatch(/videos with (your )?friends|dine videoer/i);
+		}
+	});
+
+	it('prefers the player data, and falls back to og:description', () => {
+		const inline = '{"shortDescription":"Line one\\nLine two"}';
+		expect(descriptionFor(inline)).toBe('Line one\nLine two');
+
+		const og = '<meta property="og:description" content="Ampersand &amp; quote &quot;x&quot; &#39;y&#39;">';
+		expect(descriptionFor(og)).toBe('Ampersand & quote "x" \'y\'');
+
+		// The player data wins when both are present.
+		expect(descriptionFor(`${og}${inline}`)).toBe('Line one\nLine two');
+	});
+
+	it('says nothing when there is nothing to say', () => {
+		expect(descriptionFor('<html><body>ordinary</body></html>')).toBeUndefined();
+		expect(descriptionFor('{"shortDescription":""}')).toBeUndefined();
+		expect(descriptionFor('<meta property="og:description" content="   ">')).toBeUndefined();
+		// A page with only the boilerplate meta gets nothing from us, which leaves Defuddle's answer.
+		expect(descriptionFor('<meta name="description" content="Share your videos">')).toBeUndefined();
 	});
 });

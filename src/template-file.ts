@@ -214,3 +214,81 @@ export function templateFromExport(json: unknown): Template {
 			: undefined,
 	};
 }
+
+/**
+ * Splits a template file's own frontmatter from its body, and parses the frontmatter.
+ *
+ * **This used to be Obsidian's job**, via `metadataCache.getFileCache(file)?.frontmatter`, which is a
+ * better YAML parser than this one will ever be. It had to stop being Obsidian's job because the
+ * cache is not always ready: a template the cache has not indexed yet came back with *no*
+ * frontmatter, and a missing frontmatter is indistinguishable from an empty one — so the template
+ * loaded silently wrong, with the filename as its name, no path, the default note name and **no
+ * triggers at all**. That is why URL matching appeared not to work on mobile, where indexing lags.
+ *
+ * So the config is parsed here, deterministically, with no dependency on when the cache catches up.
+ *
+ * It handles what Obsidian's own property editor writes and what a person writes by hand: `key:
+ * value`, quoted scalars, block lists, and flow lists. It does not handle nested maps, anchors,
+ * multi-line scalars or anything else YAML can do — the four config keys are all strings and lists
+ * of strings, and a template that needs more than that has outgrown the format.
+ */
+export function splitFrontmatter(markdown: string): {
+	frontmatter: TemplateFrontmatter | null;
+	body: string;
+} {
+	const match = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(markdown);
+	if (!match) return { frontmatter: null, body: markdown };
+
+	const frontmatter: Record<string, string | string[]> = {};
+	const lines = match[1].split(/\r?\n/);
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		if (!line.trim() || line.trimStart().startsWith('#')) continue;
+		if (/^\s/.test(line)) continue; // a list item belonging to the key above, handled there
+
+		const colon = line.indexOf(':');
+		if (colon === -1) continue;
+		const key = line.slice(0, colon).trim();
+		if (!key) continue;
+		const inline = line.slice(colon + 1).trim();
+
+		if (inline.startsWith('[') && inline.endsWith(']')) {
+			frontmatter[key] = inline
+				.slice(1, -1)
+				.split(',')
+				.map((item) => unquote(item.trim()))
+				.filter(Boolean);
+			continue;
+		}
+
+		if (inline) {
+			frontmatter[key] = unquote(inline);
+			continue;
+		}
+
+		// A bare `key:` — either an empty value or a block list on the lines below.
+		const items: string[] = [];
+		while (i + 1 < lines.length && /^\s+-\s/.test(lines[i + 1])) {
+			items.push(unquote(lines[++i].replace(/^\s+-\s+/, '').trim()));
+		}
+		frontmatter[key] = items.length ? items : '';
+	}
+
+	return { frontmatter, body: markdown.slice(match[0].length) };
+}
+
+/** Strips one layer of matching quotes, and unescapes what JSON-style quoting would have added. */
+function unquote(value: string): string {
+	if (value.length >= 2 && value[0] === '"' && value.endsWith('"')) {
+		try {
+			return JSON.parse(value) as string;
+		} catch {
+			return value.slice(1, -1);
+		}
+	}
+	if (value.length >= 2 && value[0] === "'" && value.endsWith("'")) {
+		return value.slice(1, -1).replace(/''/g, "'");
+	}
+	return value;
+}

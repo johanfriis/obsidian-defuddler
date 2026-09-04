@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { readVaultPropertyTypes } from '../src/property-types';
-import { ensureTemplateFolder, loadTemplates } from '../src/templates';
+import { ensureTemplateFolder, loadTemplates, matchByUrl } from '../src/templates';
 import { clipHtml } from '../src/clip';
 import { fakeApp } from './stubs/vault';
 
@@ -52,6 +52,40 @@ describe('loading templates from the vault', () => {
 		await ensureTemplateFolder(vault.app, 'Defuddler');
 		expect(vault.contents.get('Defuddler/Default.md')).toContain('edited by hand');
 		expect([...vault.files.keys()]).toEqual(['Defuddler/Default.md']);
+	});
+
+	it('reads a template whose frontmatter Obsidian has not indexed', async () => {
+		// The regression. The loader used to take the config from `metadataCache`, so a file the
+		// cache had not reached yet produced a template named after its file, with no path, the
+		// default note name and **no triggers** — and reported no error. On mobile, where indexing
+		// lags, that looked exactly like URL matching being broken.
+		const vault = fakeApp();
+		vault.addTemplate(
+			'Defuddler/Youtube.md',
+			null, // nothing in the cache, whatever the file says
+			[
+				'---',
+				'name: YouTube',
+				'path: Clippings',
+				'triggers:',
+				'  - https://www.youtube.com/watch?v=',
+				'---',
+				'',
+				'```',
+				'title: {{schema:name}}',
+				'```',
+				'',
+				'{{content}}',
+			].join('\n'),
+		);
+
+		const { templates, errors } = await loadTemplates(vault.app, 'Defuddler');
+
+		expect(errors).toEqual([]);
+		expect(templates[0].name).toBe('YouTube');
+		expect(templates[0].path).toBe('Clippings');
+		expect(templates[0].triggers).toEqual(['https://www.youtube.com/watch?v=']);
+		expect(matchByUrl(templates, 'https://www.youtube.com/watch?v=abc&list=x')?.name).toBe('YouTube');
 	});
 
 	it('returns nothing rather than throwing when the folder does not exist', async () => {

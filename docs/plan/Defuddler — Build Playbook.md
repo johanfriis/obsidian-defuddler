@@ -436,7 +436,7 @@ src/fetch.ts            requestUrl: obsidianFetch for Defuddle, fetchPage for us
 src/templates.ts        the default template, the folder loader, trigger matching
 src/template-file.ts    the G1 format: parse, serialise, and JSON import
 src/property-types.ts   the vault's property types, which win over a template's
-src/youtube-captions.ts the only file that knows what a YouTube page looks like
+src/youtube.ts          the only file that knows what a YouTube page looks like
 src/uri.ts              what obsidian://clip should do, decided apart from doing it
 src/settings.ts         the persisted settings; the tab is M3
 src/save.ts             create, and Obsidian's duplicate-naming convention
@@ -717,6 +717,36 @@ Both template files in the vault were corrected in place.
 types carry no entry for it. That is G1 behaving correctly: setting the type once in Obsidian's own
 property settings fixes it for every template, with no template edit. The same goes for `source` and
 `author`.
+
+### Found in use — three faults after 1.0.0, 2026-09-04
+
+**URL matching appeared not to work on mobile.** It was not the matcher. `loadTemplates` took a
+template's config from `metadataCache.getFileCache(file)?.frontmatter`, and a file the cache had not
+indexed yet came back with *no* frontmatter — indistinguishable from a file that has none. So the
+template loaded with the filename as its name, no path, the default note name and **no triggers at
+all**, and reported no error. On mobile, where indexing lags, that is exactly "the YouTube template
+is not preselected".
+
+The fix removes the dependency rather than working around the timing: `splitFrontmatter` in
+`src/template-file.ts` parses the four config keys itself — scalars, quoted scalars, block lists,
+flow lists — so loading a template does not depend on when Obsidian catches up. It is a smaller
+parser than Obsidian's and deliberately so; a template that needs more YAML than this has outgrown
+the format.
+
+**The description on a YouTube clip did not match the browser extension's.** YouTube's server HTML
+carries **two** `<meta name="description">` tags: its own boilerplate first — localised, so ours
+arrived in Danish — and the video's real description second. Defuddle takes the first. The extension
+never sees this, because by the time it reads the page YouTube's script has replaced the boilerplate.
+`descriptionFor` in `src/youtube.ts` reads `shortDescription` out of the inline player data, falling
+back to `og:description`, and `clipHtml` takes it as an override. Same shape as the caption fix, same
+rule: anything unexpected returns nothing and leaves Defuddle's answer alone.
+
+**And a third that the second one exposed.** `generateFrontmatter` escapes quotes but not newlines,
+so a multi-line value becomes a quoted scalar whose continuation lines sit at column 0 — which YAML
+does not require any parser to accept, and where a line reading `---` would end the frontmatter
+outright. Nobody had hit it because `{{description}}` on a YouTube page used to be one line of
+boilerplate. Property values are now flattened onto one line before the frontmatter is generated.
+The body is compiled separately and keeps every line break it was given.
 
 ## 9. M3 — Settings
 
