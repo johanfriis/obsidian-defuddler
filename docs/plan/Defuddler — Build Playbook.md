@@ -66,7 +66,7 @@ nothing still opens the template picker).
 | # | Decision | Rationale |
 |---|---|---|
 | **P1** | **One source: fetch the URL with `requestUrl()`. No webview, no iframe, on any platform.** | The premise that mobile needs a rendered DOM does not survive the evidence already in this repo. `jsbridge/test/fixtures/` are `curl` captures — server bytes, no JavaScript ever executed — and `extraction.test.ts` passes against them: stephango 13,584 chars with title/author/1400+ words, github 6,328, apnews 3,901, youtube 2,780 **including the full transcript**, instagram nothing. Four of five, and the transcript survives because Defuddle's `YoutubeExtractor` reads inline player JSON rather than the rendered page. The rendered DOM buys exactly one measured thing: github's shadow DOM. That is not worth a second code path in v1. Reversible and *additive* — see P2's note and §13. |
-| **P2** | **Clipping happens inside Obsidian; notes are written with the vault API.** ~~…so that on-create automations fire.~~ **Narrowed by Johan, 2026-09-04: on-create automations are an outdated requirement and are out of scope.** | This is still the whole reason to pivot, and it retires `D2`, `D18` and `D36` outright — no `obsidian://new`, no clipboard as transport, no size ceiling, no foregrounding, and the note enters the index as it is written. What it no longer claims is that Templater's on-create trigger fires, which was `G0/A5`'s finding turned into a benefit. **That leg is gone and the decision does not need it**: everything above is independent of it, and so is the fact that one build serves desktop and phone. It does mean the plugin-over-app case is one leg shorter than P1's write-up implied — worth knowing, not worth re-litigating. **Cost, unchanged:** `D2` credited the URI with dedup/append/overwrite for free. That credit is a debt, and those behaviours are ours to write (M4). |
+| **P2** | **Clipping happens inside Obsidian; notes are written with the vault API.** ~~…so that on-create automations fire.~~ **Narrowed by Johan, 2026-09-04: on-create automations are an outdated requirement and are out of scope.** | This is still the whole reason to pivot, and it retires `D2`, `D18` and `D36` outright — no `obsidian://new`, no clipboard as transport, no size ceiling, no foregrounding, and the note enters the index as it is written. What it no longer claims is that Templater's on-create trigger fires, which was `G0/A5`'s finding turned into a benefit. **That leg is gone and the decision does not need it**: everything above is independent of it, and so is the fact that one build serves desktop and phone. It does mean the plugin-over-app case is one leg shorter than P1's write-up implied — worth knowing, not worth re-litigating. ~~**Cost:** `D2` credited the URI with dedup/append/overwrite for free, and that credit is a debt.~~ **Retired 2026-09-04 with M4** — Johan wants only `create`, so five of the six behaviours were never owed. What the URI did give us free and we do now write is deduplicating a colliding note name, and that is eight lines. |
 | **P3** | **Upstream's engine is what we build on. We ship none of its UI. ~~We consume `api.ts`; we do not fork it~~ — narrowed by GATE G3 on 2026-09-04: its `clip()` wrapper is unusable in a browser and is reimplemented in `src/clip.ts` over the same helpers. The helpers, the template compiler, the filters and the frontmatter generator are still upstream's, untouched.** | `api.ts` is upstream's own environment-agnostic entry point: `clip({html, url, template, documentParser})` plus `matchTemplate()`. It is the entire clip pipeline with no `browser.*` in its import graph (§3 lists the 70 files it does pull). This is what makes the pivot cheap, and it is the opposite of `D31`, which hosted upstream's *extension* — that decision bought a UI and paid for it with the polyfill shim, two WebViews, a message router and bundle injection. Here we buy only the engine and build our own small UI, because Obsidian already gives us modals, settings and a command palette. |
 | **P4** | **Templates are markdown files in the vault, in a configurable folder. `matchTemplate()` preselects; the human confirms.** | In-vault means editable and syncable anywhere, with no separate store to keep in step. Preselect-don't-apply follows the governing principle, and matches `M3.3` in the old playbook. The file format is settled in **GATE G1** — markdown, with the note's frontmatter in a fenced block and its types taken from the vault. |
 | **P5** | **Settings live in Obsidian's settings tab, declared with `getSettingDefinitions()`. No `display()`. All persisted state sits inside `plugin.settings`.** | **Corrected in Phase 0, 2026-09-03.** This decision first read "built with `display()`", on the belief that Obsidian here was 1.8.10 and that the declarative API did not exist yet. Both halves were wrong: the version came from a stale `Info.plist`, and the machine is on 1.14.0. With `minAppVersion` at 1.13.0 the linter's rule is to implement the definitions and *delete* `display()`, since a non-empty definition list bypasses it anyway. The single-blob rule is unchanged and still matters, because Obsidian's auto-persist clobbers sibling keys written with `saveData()`. |
@@ -228,14 +228,11 @@ so nothing fires there today however a note is created. That is also a reason to
 Android measurement that `obsidian://new` does not fire the trigger, as unsettled rather than as
 evidence for anything here.
 
-**What S4 did answer, from Sanctum's config, is the half that M4 actually needs.** Daily-note
-resolution needs no private API: `daily-notes.json` under `app.vault.configDir` carries `folder`
-(`Calendar` here), `template`, and `format` — absent, which means the default `YYYY-MM-DD`. Folder
-plus a formatted date is the path. That closes the risk that M4 would have to reach into an internal
-plugin.
-
-Everything else S4 was to establish — dedup on an existing path, append, prepend, overwrite — is
-implementation work against a documented API, not an open question. It belongs in M4, not in a spike.
+**What S4 did answer turned out not to be needed.** It established that daily-note resolution needs
+no private API — `daily-notes.json` under `app.vault.configDir` carries `folder`, `template` and
+`format` — which mattered only while the daily-note behaviours were still in scope. M4 dropped them,
+along with append, prepend and overwrite, on Johan's call. Recorded here in case they ever come back;
+nothing depends on it now.
 
 ### GATE G0 — the de-risking spike — CLOSED, PASSED (2026-09-04)
 
@@ -246,7 +243,7 @@ All four spikes are resolved and nothing they found argues against building v1 a
 | S1 fixture parity | Passed. All five fixtures identical through a real `DOMParser`. **P1 holds.** |
 | S2 live fetch | Passed both halves. The pages still extract identically three days on, and `requestUrl` reproduces them from inside Obsidian. |
 | S3 mobile | Passed. Android matches every desktop baseline; five pages in 6 s at 836 KB. |
-| S4 write path | Closed. Its central question was retired with P2's narrowing; the half M4 needed is answered. |
+| S4 write path | Closed. Its central question was retired with P2's narrowing, and the rest with M4's deletion. |
 
 What the gate cost, in the order it hurt: upstream's `clip()` turned out to be unusable in a browser
 (GATE G3), the extraction harness turned out to be silently network-dependent, and the YouTube
@@ -268,7 +265,6 @@ first fenced block is the note's frontmatter; everything after that block is the
 ````markdown
 ---
 name: Article
-behavior: create
 path: Clippings
 noteNameFormat: "{{title}}"
 triggers:
@@ -323,9 +319,9 @@ already configured, rather than being restated in every template.
   rename-free copy.
 - **Costs** per-template type overrides, which are given up in favour of the vault's single answer. Two
   templates wanting different types for the same property name is a case that has not come up.
-- **Residual pollution, accepted:** the five config keys (`name`, `behavior`, `path`,
-  `noteNameFormat`, `triggers`) do enter the property index. `name` is the only one generic enough to
-  collide with a real content property. Templates live in their own folder, so a query can exclude
+- **Residual pollution, accepted:** the four config keys (`name`, `path`, `noteNameFormat`,
+  `triggers`) do enter the property index — `behavior` was one of five until M4 dropped it. `name` is
+  the only one generic enough to collide with a real content property. Templates live in their own folder, so a query can exclude
   them; that is the mitigation and it is the same one any template folder needs.
 
 ### GATE G2 — v1 release — OPEN
@@ -371,8 +367,9 @@ frontmatter + body, ready to write. Our `DocumentParser` is one line: `new DOMPa
    schema triggers are wanted later, run Defuddle first and hand the parsed document to `clip()` via
    `parsedDocument` so it is not parsed twice — the option exists for exactly this.
 4. **`saveToObsidian()` in `src/utils/obsidian-note-creator.ts` is what we replace.** Reading it is
-   the fastest way to see the debt P2 names: it delegates `append`, `prepend`, `overwrite` and daily
-   notes to the URI's query parameters. Our M4 implements all of them against the vault API.
+   the fastest way to see what the URI used to do for the Android build: it delegates `append`,
+   `prepend`, `overwrite` and daily notes to the URI's query parameters. **We implement none of them**
+   — see M4 — so what we replace is the create-and-name-it part alone.
 5. **Property types decide the YAML shape, and `clip()` lets us supply them out of band.**
    `generateFrontmatter()` in `src/utils/shared.ts` switches on the type: `multitext` emits a real
    YAML list, `number` strips non-numerics and parses, `checkbox` emits a bare boolean, `date` and
@@ -415,7 +412,7 @@ URL (clipboard | prompt | obsidian://clip)
   → matchTemplate()                    preselected template
   → template picker (human confirms)
   → clip()                             { noteName, fullContent, … }
-  → vault write per template.behavior
+  → vault write (create; a colliding name gets ` 1`, ` 2`, …)
   → open the note (optional)
 ```
 
@@ -431,7 +428,7 @@ src/template-file.ts    the G1 format: parse, serialise, and JSON import
 src/property-types.ts   the vault's property types, which win over a template's
 src/youtube-captions.ts the only file that knows what a YouTube page looks like
 src/settings.ts         the persisted settings; the tab is M3
-src/save.ts             create; the other five behaviours are M4
+src/save.ts             create, and Obsidian's duplicate-naming convention
 src/ui/                 url-prompt, template-picker, json-import
 manifest.json  versions.json  styles.css
 esbuild.config.mjs      the build, and the two resolutions §3 depends on
@@ -651,8 +648,8 @@ sources. This is pinned in `test/templates.test.ts` so nobody goes hunting.
 
 ### Acceptance
 
-- [x] A malformed template names itself and does not take the others down — two kinds, an unknown
-      `behavior` and an unclosed fence, both reported by path.
+- [x] A malformed template names itself and does not take the others down — two kinds, an unclosed
+      fence and a property line with no colon, both reported by path.
 - [x] A template with a URL trigger is preselected for a matching URL and not for a non-matching one,
       for prefix triggers and regex triggers alike.
 - [x] A placeholder in the fence needs no quoting: `published: {{published|date:"YYYY-MM-DD"}}`
@@ -743,23 +740,34 @@ Two things the milestone changed elsewhere:
 - [ ] **Needs the app:** every setting persists across a reload, on desktop and mobile, and the tab is
       usable by keyboard alone.
 
-## 10. M4 — Save behaviours
+## 10. M4 — Save behaviours — CLOSED, mostly by deletion (2026-09-04)
 
-The debt P2 names. Implement all six of `Template['behavior']` against the vault API: `create`
-(with a dedup rule — decide and record it, since the URI's was invisible to us), `append-specific`,
-`prepend-specific`, `overwrite`, and `append-daily` / `prepend-daily`.
+**Johan's call: only `create`.** Asked what the other five were for, and whether the flag earned its
+place, he answered that he would never clip a page meaning to append it to a daily note, and that he
+did not want `overwrite` either — Obsidian's own handling of a duplicate name was what he wanted.
 
-Daily notes turned out not to be risky. S4 read the config: `daily-notes.json` under
-`app.vault.configDir` carries `folder`, `template` and `format`, and an absent `format` means
-`YYYY-MM-DD`. Folder plus a formatted date is the path, with no private API. A missing or disabled
-daily-notes setup must still produce a clear message rather than a crash.
+The evidence agreed. All twelve of kepano's published templates are `create`. So is every clip in
+Sanctum.
+
+So `behavior` is not read from a template file, not written to one, and not taken from an import. It
+is set to `create` in one place and ignored everywhere else; the field survives only because the type
+is upstream's. **Importing an export that asked for something else says so** rather than coercing in
+silence — that silence was the actual defect this milestone found, since `behavior` had been parsed
+and validated since M2 and then never read, so a template declaring `append-daily` quietly created a
+note instead.
+
+**What replaced it is eight lines.** A colliding note name takes the next free one — `Name`,
+`Name 1`, `Name 2` — which is Obsidian's own convention for a duplicate. Obsidian exposes that helper
+publicly only for attachments and its note equivalent is undocumented, so the convention is matched
+rather than the private method called. This also settles the question M1 deferred: a second clip of a
+page is kept beside the first, neither refused nor silently replacing it.
 
 ### Acceptance
 
-- [ ] Each of the six behaviours does what its name says, verified against a real note.
-- [ ] Appending twice does not duplicate frontmatter.
-- [ ] `create` against an existing path follows the recorded dedup rule.
-- [ ] Daily behaviours work with Johan's periodic-notes setup, and degrade with a clear message without it.
+- [x] A second and third clip of the same page land as ` 1` and ` 2`, with the first untouched.
+- [x] `behavior` in a template file changes nothing, whatever it says.
+- [x] `behavior` is not written when a template is serialised.
+- [x] Importing an export that asks for another behaviour warns and creates.
 
 ## 11. M5 — `obsidian://clip`
 
@@ -775,7 +783,8 @@ whichever vault was last used, so anything generating these links should carry t
 
 ## 12. v1 release checklist — GATE G2
 
-- [ ] M1–M5 acceptance boxes all checked, on desktop **and** on the phone.
+- [ ] M1–M5 acceptance boxes all checked, on desktop **and** on the phone. M4 is closed by deletion,
+      so what remains to exercise is M1, M2, M3 and M5.
 - [ ] Extraction harness green against the pinned submodule and Defuddle.
 - [ ] `main.js` size and the mobile clip timing recorded in §2 and judged acceptable.
 - [ ] A tagged release carries `main.js`, `manifest.json`, `styles.css`, tag equal to manifest version.
@@ -821,7 +830,7 @@ whichever vault was last used, so anything generating these links should carry t
 | `navigator.clipboard.readText()` unreliable on mobile | P8 makes the prompt the fallback, so this degrades the ergonomics and never the function | Mitigated by design; S3 measures how often |
 | Defuddle's `PARTIAL_SELECTORS` contains a regex lookbehind, which throws on iOS < 16.4 | Not reachable on Android; would be a hard failure, not a degradation, on an old iPhone. Not fixable in our code — it is inside the pinned dependency | Accepted; revisit if iOS is ever a target |
 | ~~`main.js` size slows Obsidian mobile's startup~~ | **Closed by S3.** 836 KB, and five pages clip end to end in 6 s on the phone against 5 s on the desktop | Closed |
-| ~~Daily-note resolution needs semi-private API~~ | **Closed 2026-09-04.** `daily-notes.json` under `app.vault.configDir` carries folder, template and format; an absent format means `YYYY-MM-DD`. No private API | Closed |
+| ~~Daily-note resolution needs semi-private API~~ | **Moot 2026-09-04.** M4 dropped the daily-note behaviours entirely. Answered before it was dropped: `daily-notes.json` under `app.vault.configDir` has what is needed, with no private API | Closed |
 | Server HTML is empty for SPA-only pages | P10 — a note with frontmatter and no body is a valid outcome, and §13's rendered source is the real answer if it becomes common | Accepted |
 | Obsidian on the phone is below 1.13, so declarative settings render nothing | The phone ran the spike, so it is new enough to have installed a plugin declaring `minAppVersion` 1.13.0. Unverified beyond that | Mostly closed |
 | Reading the vault's property types reaches into the config directory, whose file shape is undocumented | Resolve the path through `app.vault.configDir`, never a hardcoded `.obsidian`, and treat any failure as "no types" — the quoted-text default is valid YAML, so the failure is a downgrade, not a break | Accepted |

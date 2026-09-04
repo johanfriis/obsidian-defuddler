@@ -57,8 +57,10 @@ export class JsonImport extends Modal {
 
 	private async import(): Promise<void> {
 		let template: Template;
+		let parsed: unknown;
 		try {
-			template = templateFromExport(JSON.parse(this.json));
+			parsed = JSON.parse(this.json);
+			template = templateFromExport(parsed);
 		} catch (error) {
 			new Notice(
 				error instanceof TemplateFileError
@@ -66,6 +68,13 @@ export class JsonImport extends Modal {
 					: `That is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
 			);
 			return;
+		}
+
+		// Defuddler only creates notes. Coercing an export that asked for something else is fine, but
+		// doing it in silence is not — that is the mistake the old `behavior` handling made.
+		const asked = (parsed as { behavior?: unknown }).behavior;
+		if (typeof asked === 'string' && asked !== 'create') {
+			new Notice(`That template asked to ${asked}. Defuddler only creates notes, so it will create one.`, 8000);
 		}
 
 		const name = template.name;

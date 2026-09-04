@@ -147,17 +147,18 @@ describe('clipUrlToVault', () => {
 		expect(seen).toBe('Defuddler/test');
 	});
 
-	it('refuses to clobber an existing note, because the dedup rule is M4\'s to choose', async () => {
+	it('keeps a second clip beside the first, the way Obsidian names a duplicate', async () => {
 		serve(readFileSync(join(fixtures, 'apnews-article.html'), 'utf8'));
 		const { app, contents } = fakeApp();
 
 		const first = await clipUrlToVault(app, { url: APNEWS, template: DEFAULT_TEMPLATE });
 		const before = contents.get(first!.path);
-
 		const second = await clipUrlToVault(app, { url: APNEWS, template: DEFAULT_TEMPLATE });
+		const third = await clipUrlToVault(app, { url: APNEWS, template: DEFAULT_TEMPLATE });
 
-		expect(second).toBeNull();
+		// The first is untouched; the others sit beside it as ` 1` and ` 2`.
 		expect(contents.get(first!.path)).toBe(before);
-		expect(__notices.at(-1)).toContain('already exists');
+		expect(second!.path).toBe(first!.path.replace(/\.md$/, ' 1.md'));
+		expect(third!.path).toBe(first!.path.replace(/\.md$/, ' 2.md'));
 	});
 });

@@ -26,15 +26,15 @@ describe('loading templates from the vault', () => {
 	it('names a broken template and loads the rest anyway', async () => {
 		const vault = fakeApp();
 		vault.addTemplate('Defuddler/Good.md', { name: 'Good' }, FENCE);
-		vault.addTemplate('Defuddler/Broken.md', { name: 'Broken', behavior: 'sideways' }, FENCE);
 		vault.addTemplate('Defuddler/Unclosed.md', { name: 'Unclosed' }, '```\ntitle: x\n');
+		vault.addTemplate('Defuddler/NoColon.md', { name: 'NoColon' }, '```\nnot a property\n```\n\n{{content}}');
 
 		const { templates, errors } = await loadTemplates(vault.app, 'Defuddler');
 
 		expect(templates.map((t) => t.name)).toEqual(['Good']);
-		expect(errors.map((e) => e.file).sort()).toEqual(['Defuddler/Broken.md', 'Defuddler/Unclosed.md']);
-		expect(errors.find((e) => e.file.endsWith('Broken.md'))!.message).toMatch(/not one of/);
+		expect(errors.map((e) => e.file).sort()).toEqual(['Defuddler/NoColon.md', 'Defuddler/Unclosed.md']);
 		expect(errors.find((e) => e.file.endsWith('Unclosed.md'))!.message).toMatch(/never closed/);
+		expect(errors.find((e) => e.file.endsWith('NoColon.md'))!.message).toMatch(/no colon/);
 	});
 
 	it('seeds the default template when the folder is empty, and leaves it alone afterwards', async () => {

@@ -72,7 +72,7 @@ describe('buildTemplate', () => {
 	it('takes its config from the frontmatter Obsidian parsed', () => {
 		const template = buildTemplate(
 			'Article',
-			{ name: 'Article', behavior: 'create', path: 'Clippings', noteNameFormat: '{{title}}', triggers: ['https://apnews.com/'] },
+			{ name: 'Article', path: 'Clippings', noteNameFormat: '{{title}}', triggers: ['https://apnews.com/'] },
 			markdown,
 		);
 		expect(template).toMatchObject({
@@ -93,8 +93,13 @@ describe('buildTemplate', () => {
 		expect(template.noteNameFormat).toBe('{{title}}');
 	});
 
-	it('refuses a behavior that is not one of the six', () => {
-		expect(() => buildTemplate('X', { behavior: 'sideways' }, markdown)).toThrow(/not one of/);
+	it('always creates, whatever a file happens to say', () => {
+		// `behavior` is not read from a template file at all — Johan wants only `create`, so a
+		// stray key from an old export or a hand edit changes nothing.
+		expect(buildTemplate('X', { name: 'X' } as never, markdown).behavior).toBe('create');
+		expect(
+			buildTemplate('X', { name: 'X', behavior: 'append-daily' } as never, markdown).behavior,
+		).toBe('create');
 	});
 });
 
@@ -115,6 +120,8 @@ describe('serialiseTemplate', () => {
 		};
 
 		const text = serialiseTemplate(original);
+		// `behavior` is not written out either — there is nothing to configure.
+		expect(text).not.toContain('behavior:');
 		// The placeholder in noteNameFormat must survive as real frontmatter, so it is quoted there —
 		// and must NOT be quoted inside the fence, which is not YAML.
 		expect(text).toContain('noteNameFormat: "{{schema:author}} – {{schema:name}}"');

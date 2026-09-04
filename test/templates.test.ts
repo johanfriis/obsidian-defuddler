@@ -86,7 +86,6 @@ describe('importing a real export', () => {
 		const text = serialiseTemplate(converted);
 		const roundTripped = buildTemplate('youtube-clipper', {
 			name: converted.name,
-			behavior: converted.behavior,
 			path: converted.path,
 			noteNameFormat: converted.noteNameFormat,
 			triggers: converted.triggers,

@@ -11,7 +11,6 @@ import type { Property, Template } from '../vendor/obsidian-clipper/src/api';
  * ````markdown
  * ---
  * name: Article
- * behavior: create
  * path: Clippings
  * noteNameFormat: "{{title}}"
  * triggers:
@@ -40,19 +39,21 @@ import type { Property, Template } from '../vendor/obsidian-clipper/src/api';
 
 export class TemplateFileError extends Error {}
 
-const BEHAVIORS = new Set<Template['behavior']>([
-	'create',
-	'append-specific',
-	'append-daily',
-	'prepend-specific',
-	'prepend-daily',
-	'overwrite',
-]);
+/**
+ * There is one behaviour, and it is not configurable.
+ *
+ * Upstream's `Template` carries six — append and prepend to a named note or to today's daily note,
+ * and overwrite — because the Web Clipper offers them. Johan's call on 2026-09-04: he wants none of
+ * them, and would never clip a page meaning to append it to a daily note. All twelve of kepano's
+ * published templates are `create` as well. So `behavior` is not read from a template file, not
+ * written to one, and not taken from an import; it is set here and ignored everywhere else. The
+ * field stays on the type only because the type is upstream's.
+ */
+const BEHAVIOR: Template['behavior'] = 'create';
 
 /** The config keys we read out of a template file's own frontmatter. */
 export interface TemplateFrontmatter {
 	name?: unknown;
-	behavior?: unknown;
 	path?: unknown;
 	noteNameFormat?: unknown;
 	triggers?: unknown;
@@ -121,13 +122,6 @@ export function buildTemplate(
 	markdown: string,
 ): Template {
 	const fm = frontmatter ?? {};
-	const behavior = asString(fm.behavior) ?? 'create';
-	if (!BEHAVIORS.has(behavior as Template['behavior'])) {
-		throw new TemplateFileError(
-			`\`behavior: ${behavior}\` is not one of ${[...BEHAVIORS].join(', ')}`,
-		);
-	}
-
 	const rawTriggers = fm.triggers;
 	const triggers = Array.isArray(rawTriggers)
 		? rawTriggers.filter((t): t is string => typeof t === 'string')
@@ -140,7 +134,7 @@ export function buildTemplate(
 	return {
 		id,
 		name: asString(fm.name) ?? id,
-		behavior: behavior as Template['behavior'],
+		behavior: BEHAVIOR,
 		path: asString(fm.path) ?? '',
 		noteNameFormat: asString(fm.noteNameFormat) ?? '{{title}}',
 		noteContentFormat: body,
@@ -156,7 +150,6 @@ export function serialiseTemplate(template: Template): string {
 	const front = [
 		'---',
 		`name: ${quote(template.name)}`,
-		`behavior: ${template.behavior}`,
 		`path: ${quote(template.path)}`,
 		`noteNameFormat: ${quote(template.noteNameFormat)}`,
 	];
@@ -192,6 +185,10 @@ export function serialiseTemplate(template: Template): string {
  *   - they declare a `type` on each property, which is dropped. Since GATE G1 types come from the
  *     vault, and a type carried in a template would quietly win over the vault's for that one
  *     template — the surprise being worse than the loss.
+ *
+ * `behavior` is dropped too, for the reason at `BEHAVIOR` above. The caller is expected to say so
+ * when an export asked for something other than `create`, rather than letting the coercion pass in
+ * silence.
  */
 export function templateFromExport(json: unknown): Template {
 	if (!json || typeof json !== 'object') {
@@ -202,15 +199,10 @@ export function templateFromExport(json: unknown): Template {
 	const name = (asString(source.name) ?? '').trim();
 	if (!name) throw new TemplateFileError('that JSON has no `name`, so there is nothing to call it');
 
-	const behavior = asString(source.behavior) ?? 'create';
-	if (!BEHAVIORS.has(behavior as Template['behavior'])) {
-		throw new TemplateFileError(`\`behavior: ${behavior}\` is not one of ${[...BEHAVIORS].join(', ')}`);
-	}
-
 	return {
 		id: name,
 		name,
-		behavior: behavior as Template['behavior'],
+		behavior: BEHAVIOR,
 		path: asString(source.path) ?? '',
 		noteNameFormat: asString(source.noteNameFormat) ?? '{{title}}',
 		noteContentFormat: asString(source.noteContentFormat) ?? '{{content}}',
