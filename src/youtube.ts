@@ -139,3 +139,25 @@ function decodeEntities(value: string): string {
 		.replace(/&gt;/g, '>')
 		.replace(/&amp;/g, '&');
 }
+
+/**
+ * Splits Defuddle's markdown into the part before the transcript and the transcript itself.
+ *
+ * Defuddle emits a watch page as the embed, then `## Transcript`, then one line per cue. That is
+ * everything in `{{content}}`, which is fine until you want the transcript as its own section under
+ * your own heading — at which point there is no way to ask for it.
+ *
+ * `transcript` is the cues with the heading removed, so a template supplies its own. `before` is
+ * what precedes it. Both are `undefined` when there is no transcript heading, which is every page
+ * that is not a YouTube video and every video whose captions could not be fetched.
+ */
+export function splitTranscript(markdown: string): { before?: string; transcript?: string } {
+	const heading = /^#{1,3}[ \t]+Transcript[ \t]*$/m.exec(markdown);
+	if (!heading) return {};
+
+	const before = markdown.slice(0, heading.index).trim();
+	const transcript = markdown.slice(heading.index + heading[0].length).trim();
+	if (!transcript) return {};
+
+	return { before, transcript };
+}

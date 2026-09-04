@@ -72,10 +72,21 @@ picker still opens and you still choose.
 
 Variables, filters and the `{{selector:…}}` and `{{schema:…}}` families are upstream's, and are
 documented in the [Web Clipper's template
-reference](https://help.obsidian.md/web-clipper/variables). Two things worth knowing that the docs
-do not spell out: the word count is `{{words}}`, not `{{wordCount}}`, and `{{date}}` and `{{time}}`
-are the same full timestamp, so shape it with `{{date|date:"YYYY-MM-DD HH:mm"}}` rather than writing
-both.
+reference](https://help.obsidian.md/web-clipper/variables). Some things the docs do not spell out:
+
+- The word count is `{{words}}`, not `{{wordCount}}`.
+- `{{date}}` and `{{time}}` are the same full timestamp, so shape it with
+  `{{date|date:"YYYY-MM-DD HH:mm"}}` rather than writing both.
+- **A `{{schema:…}}` variable resolves to nothing when the page's JSON-LD lacks that key, silently.**
+  On YouTube that catches `{{schema:author}}`, whose data simply is not there — use `{{author}}`,
+  which Defuddle works out for itself. When a variable looks wrong, `{{meta:name:…}}` and
+  `{{meta:property:…}}` expose the page's raw meta tags and are the general escape hatch.
+
+Two variables are **Defuddler's own**, and a template using them will not work in the Web Clipper.
+Defuddle buries a YouTube transcript inside `{{content}}` under a heading a template cannot change,
+so `{{transcript}}` is the cues on their own, without that heading, and
+`{{contentWithoutTranscript}}` is everything before it. Both are empty on any page without a
+transcript.
 
 ## What it does not do
 
@@ -88,6 +99,11 @@ duplicate.
 Pages are fetched as the server sends them, with no JavaScript run. Server-rendered pages clip well;
 single-page apps and anything behind a login generally do not, and land as a note with frontmatter
 and no body.
+
+That difference is why YouTube needs help in two places the browser extension does not: its server
+HTML carries two `<meta name="description">` tags, the generic one first, and it offers no caption
+track deliberately unless asked. Both are handled in `src/youtube.ts`, which loses quietly whenever
+the page is not the shape it expects.
 
 ## Development
 

@@ -748,6 +748,26 @@ outright. Nobody had hit it because `{{description}}` on a YouTube page used to 
 boilerplate. Property values are now flattened onto one line before the frontmatter is generated.
 The body is compiled separately and keeps every line break it was given.
 
+### Found in use — the author, and a variable that never existed, 2026-09-04
+
+**`{{schema:author}}` is empty on every YouTube video, and correctly so.** The page's JSON-LD is a
+`VideoObject` carrying `@context`, `@type`, `@id`, `name`, `thumbnailUrl`, `uploadDate` and
+`comment` — no `author` at any depth. Defuddle's own `{{author}}` knows perfectly well that it is
+"The Witcher"; the two are different sources and the schema one is thinner. This was already pinned
+in `test/templates.test.ts` from M1, as a behaviour that would look like a bug. It duly did. The fix
+is a template edit, not code: use `{{author}}`.
+
+**`{{transcript}}` was never a variable.** Johan's template had a `## Transcript` section followed by
+`{{transcript}}`, and an unresolved variable compiles to an empty string — so every YouTube clip had
+an empty heading and nobody was told. The transcript was there all along, inside `{{content}}`, under
+a heading a template cannot change.
+
+Rather than leave a trap, `{{transcript}}` now exists: `splitTranscript` in `src/youtube.ts` cuts
+Defuddle's markdown at the transcript heading, and `clipHtml` adds `{{transcript}}` (the cues,
+heading removed) and `{{contentWithoutTranscript}}` (everything before). **These two are ours, not
+upstream's**, so a template using them will not work in the Web Clipper — the price of being able to
+ask for the transcript at all.
+
 ## 9. M3 — Settings
 
 **Built 2026-09-04.** A `PluginSettingTab` that declares `getSettingDefinitions()` and has no

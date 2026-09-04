@@ -158,3 +158,25 @@ describe('readableText', () => {
     expect(readableText('I use [Obsidian](https://obsidian.md) to think')).toBe('I use Obsidian to think');
   });
 });
+
+describe('the transcript variables', () => {
+  // {{transcript}} and {{contentWithoutTranscript}} are ours, not upstream's — a template using them
+  // will not work in the Web Clipper. They exist because Defuddle buries the transcript inside
+  // {{content}} under a heading a template cannot change.
+  const template = {
+    ...TEMPLATE,
+    properties: [],
+    noteContentFormat: 'BEFORE[{{contentWithoutTranscript}}] TRANSCRIPT[{{transcript}}]',
+  };
+
+  it('are empty on a page with no transcript, and do not leak the placeholder', async () => {
+    const result = await clipHtml({
+      html: readFileSync(join(fixtures, 'apnews-article.html'), 'utf8'),
+      url: SOURCE_URLS['apnews-article.html'],
+      template,
+      defuddle: { fetch: noNetwork },
+    });
+
+    expect(result.content).toBe('BEFORE[] TRANSCRIPT[]');
+  });
+});
