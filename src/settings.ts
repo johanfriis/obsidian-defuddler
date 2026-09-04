@@ -8,7 +8,7 @@ import { DEFAULT_USER_AGENT } from './fetch';
  * separately with `saveData` (P5). A control's `key` below is a key of this interface.
  */
 export interface DefuddlerSettings {
-	/** Where template files live. Kept out of `Templates/` so Templater does not list them. */
+	/** Where template files live. */
 	templateFolder: string;
 	/** Preselected in the picker when no template's trigger matches the URL. */
 	defaultTemplate: string;
@@ -21,7 +21,7 @@ export interface DefuddlerSettings {
 }
 
 export const DEFAULT_SETTINGS: DefuddlerSettings = {
-	templateFolder: 'Defuddler',
+	templateFolder: 'Templates/Defuddler',
 	defaultTemplate: '',
 	outputFolder: 'Clippings',
 	openAfterClipping: true,
@@ -68,8 +68,8 @@ export class DefuddlerSettingTab extends PluginSettingTab {
 				items: [
 					{
 						name: 'Template folder',
-						desc: 'Where template files live. Keep it out of your Templater folder, or Templater will offer them as note templates.',
-						control: { type: 'folder', key: 'templateFolder', placeholder: 'Defuddler' },
+						desc: 'Where template files live. Anything inside your Templater folder will also be offered by Templater as a note template.',
+						control: { type: 'folder', key: 'templateFolder', placeholder: 'Templates/Defuddler' },
 					},
 					{
 						name: 'Default template',

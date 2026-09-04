@@ -598,9 +598,11 @@ the loader, the picker, the JSON importer and the vault-types lookup all exist a
 
 **Four choices made while building it, none big enough for the decisions log but all worth knowing:**
 
-- **The default folder is `Defuddler` at the vault root, not under `Templates/`.** Templater's
-  `templates_folder` is `Templates`, so anything put there shows up in Templater's own picker. It is
-  a setting; M3 gives it a UI.
+- ~~**The default folder is `Defuddler` at the vault root, not under `Templates/`.**~~ **Changed to
+  `Templates/Defuddler` on Johan's call, 2026-09-04**, after he reorganised that folder. The original
+  reason has not gone away — Templater's `templates_folder` is still `Templates`, and it lists
+  recursively, so it will offer these as note templates — but the tidiness is worth more to him than
+  the noise. It is a setting either way.
 - **A property's `type` is dropped on import.** G1 puts types in the vault, and a type carried inside
   one template would quietly win over the vault's answer for that template alone. The surprise costs
   more than the fidelity.
@@ -803,14 +805,19 @@ Two things worth knowing about the handler itself:
 
 ## 12. v1 release checklist — GATE G2
 
-- [ ] M1–M5 acceptance boxes all checked, on desktop **and** on the phone. M4 is closed by deletion,
-      so what remains to exercise is M1, M2, M3 and M5.
-- [ ] Extraction harness green against the pinned submodule and Defuddle.
-- [ ] `main.js` size and the mobile clip timing recorded in §2 and judged acceptable.
+- [x] M1–M5 acceptance boxes all checked. M4 is closed by deletion. Johan confirmed on the app
+      2026-09-04: settings survive a reload, a template authored in the vault reaches the picker
+      without a restart, **a populated clipboard does read on Android** — which closes the last
+      question S3 left open — and `obsidian://clip` works from a browser. The share sheet is left for
+      later, deliberately.
+- [x] Extraction harness green against the pinned submodule and Defuddle — 71 tests.
+- [x] `main.js` size and the mobile clip timing recorded in §2 and judged acceptable.
+- [x] LICENSE present, 2026, holder is Johan.
+- [x] README covering install via BRAT, the template format, and the URI scheme.
+- [x] Templates moved to `Templates/Defuddler`, and kepano's twelve published templates converted
+      into that folder through our own importer.
 - [ ] A tagged release carries `main.js`, `manifest.json`, `styles.css`, tag equal to manifest version.
 - [ ] Installed fresh through BRAT into Sanctum from that release, not from the dev symlink.
-- [ ] LICENSE present, current year, holder is Johan.
-- [ ] README covering install via BRAT, the template folder, and the URI scheme.
 
 ## 13. Post-v1
 
