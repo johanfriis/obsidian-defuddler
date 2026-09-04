@@ -324,9 +324,15 @@ already configured, rather than being restated in every template.
   the only one generic enough to collide with a real content property. Templates live in their own folder, so a query can exclude
   them; that is the mitigation and it is the same one any template folder needs.
 
-### GATE G2 — v1 release — OPEN
+### GATE G2 — v1 release — PASSED (2026-09-04)
 
-The checklist is §12.
+**1.0.0 is cut.** Everything on §12's checklist is done except installing it through BRAT, which is
+Johan's to do on his own devices. The dev symlinks have to be removed first or BRAT installs over
+them.
+
+What v1 is: one command that clips a URL through Defuddle into a template kept in the vault, on
+desktop and on Android from one build; templates as markdown files with their types taken from the
+vault; a settings tab; and `obsidian://clip` as the seam for whatever comes next.
 
 ## 3. Ground truth: upstream integration points
 
@@ -816,8 +822,12 @@ Two things worth knowing about the handler itself:
 - [x] README covering install via BRAT, the template format, and the URI scheme.
 - [x] Templates moved to `Templates/Defuddler`, and kepano's twelve published templates converted
       into that folder through our own importer.
-- [ ] A tagged release carries `main.js`, `manifest.json`, `styles.css`, tag equal to manifest version.
-- [ ] Installed fresh through BRAT into Sanctum from that release, not from the dev symlink.
+- [x] A tagged release carries `main.js`, `manifest.json`, `styles.css`, tag equal to manifest
+      version. **1.0.0 published 2026-09-04**, first run of the workflow written in Phase 0 and it
+      passed unchanged: tag check, typecheck, 71 tests, production build, then the three assets.
+- [ ] **Johan's:** installed fresh through BRAT from that release, not from the dev symlink. The
+      dev symlinks in `.obsidian/plugins/defuddler/` have to go first, or BRAT will be installing
+      over them.
 
 ## 13. Post-v1
 
