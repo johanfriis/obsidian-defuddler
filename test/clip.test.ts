@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { clip as upstreamClip } from '../vendor/obsidian-clipper/src/api';
 import type { Template } from '../vendor/obsidian-clipper/src/api';
 import { clipHtml, readableText } from '../src/clip';
+import { runNetworkTests } from './network';
 
 /**
  * Guards GATE G3's fork.
@@ -166,14 +167,12 @@ describe('readableText', () => {
  * `{{transcript}}` is Defuddle's, supplied by its YouTube extractor through `result.variables` — but
  * only when the captions were actually fetched. Every other test here refuses the network, which
  * makes the variable invisible, and reasoning from that absence is how a working variable came to be
- * overwritten in 1.0.2. So this one leaves the machine, and skips when it cannot.
+ * overwritten in 1.0.2.
+ *
+ * So this one leaves the machine, and is opt-in for it — see `test/network.ts`.
  */
-const online = await fetch('https://www.youtube.com/generate_204', { signal: AbortSignal.timeout(4000) })
-  .then(() => true)
-  .catch(() => false);
-
 describe("Defuddle's own extractor variables", () => {
-  it.runIf(online)('reach the template as {{transcript}}', async () => {
+  it.runIf(runNetworkTests)('reach the template as {{transcript}}', async () => {
     const result = await clipHtml({
       html: readFileSync(join(fixtures, 'youtube-multitrack.html'), 'utf8'),
       url: SOURCE_URLS['youtube-multitrack.html'],

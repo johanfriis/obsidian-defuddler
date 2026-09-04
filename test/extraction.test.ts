@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { runNetworkTests } from './network';
 import Defuddle from 'defuddle';
 
 /**
@@ -131,9 +132,10 @@ describe('extraction fixtures', () => {
   });
 
   // The only test here that leaves the machine, and the only one that can fail for a reason that
-  // is not ours. It guards the thing M0/S1 found: the transcript is reachable, but only through a
-  // fetch that is not CORS-bound — which inside Obsidian means requestUrl (src/fetch.ts, GATE G3).
-  it.runIf(online)('youtube — the transcript, which costs a network call', async () => {
+  // is not ours — which is exactly why it is opt-in (see test/network.ts). It guards what M0/S1
+  // found: the transcript is reachable, but only through a fetch that is not CORS-bound, which
+  // inside Obsidian means requestUrl (src/fetch.ts, GATE G3).
+  it.runIf(runNetworkTests)('youtube — the transcript, which costs a network call', async () => {
     const result = await extract('youtube-watch.html', { fetch: globalThis.fetch });
     expect(result.content).toContain('<h2>Transcript</h2>');
     expect(result.content).toContain('We\'re no strangers to love');

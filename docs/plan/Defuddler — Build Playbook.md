@@ -773,10 +773,18 @@ Reverted in 1.0.3, along with the `{{contentWithoutTranscript}}` that came with 
 invented to solve a problem that did not exist.
 
 **The guard that was missing now exists.** `test/clip.test.ts` asserts `{{transcript}}` reaches a
-template, and it has to leave the machine to do it, so it skips when offline. It also has to hand
-Defuddle `globalThis.fetch`: jsdom's own fetch is CORS-bound, which is the same distinction that
-makes `requestUrl` necessary inside Obsidian, and the same one that made the variable look absent in
-the first place.
+template. It has to hand Defuddle `globalThis.fetch` to do it, because jsdom's own is CORS-bound —
+the same distinction that makes `requestUrl` necessary inside Obsidian, and the same one that made
+the variable look absent in the first place.
+
+**And it immediately broke the release, which is the third lesson in the same afternoon.** The build
+for 1.0.3 failed because YouTube served the runner a transcript for one video and refused it for
+another. A test that can go red for a reason that is not ours does not belong in the default run and
+certainly not in the release path — something this document had already said about that very test,
+without acting on it.
+
+Both network tests are now opt-in behind `DEFUDDLER_NETWORK_TESTS=1`, which `just test-network` sets.
+`npm test` and CI are hermetic: 82 run, 2 skip.
 
 ## 9. M3 — Settings
 
@@ -913,6 +921,10 @@ Two things worth knowing about the handler itself:
 - **`requestUrl()`, never `fetch()`.** `fetch` is CORS-bound in the renderer; `requestUrl` is not, and
   it is the documented API. This is also a community-scanner rule we follow because it is right, not
   because of P6.
+- **A test that leaves this machine is opt-in.** Two do, both calling YouTube's transcript API, and
+  both are behind `DEFUDDLER_NETWORK_TESTS=1` (`just test-network`). They are worth having — they
+  guard the finding the whole CORS-free fetch rests on — but a release must not be able to fail
+  because a third party rate-limited a CI runner. It did once, on 1.0.3.
 - **Bumping the submodule or Defuddle runs the extraction harness first.** The single most valuable
   thing carried over from the Android work: a changed extraction shows up as a moved snapshot instead
   of a surprise on the phone.

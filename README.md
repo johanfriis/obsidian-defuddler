@@ -107,10 +107,14 @@ the page is not the shape it expects.
 ## Development
 
 ```bash
-just setup    # submodule, npm deps, symlink into the vault
-just dev      # rebuild on change
-just ci       # typecheck, tests, production build
+just setup         # submodule, npm deps, symlink into the vault
+just dev           # rebuild on change
+just ci            # typecheck, tests, production build
+just test-network  # as above, plus the two tests that call YouTube's API
 ```
+
+The test suite is hermetic by default. Two tests call YouTube's transcript API and are opt-in,
+because a release should not be able to fail because a third party rate-limited a CI runner.
 
 `docs/plan` holds the build playbook: the decisions, what was measured, and why things are the way
 they are.

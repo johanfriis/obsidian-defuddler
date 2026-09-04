@@ -62,6 +62,11 @@ dev:
 test:
     npm test
 
+# As `test`, plus the two tests that call YouTube's transcript API. Kept out of the default run and
+# out of CI: they can go red for reasons that are not ours, and a release must not fail on that.
+test-network:
+    DEFUDDLER_NETWORK_TESTS=1 npm test
+
 # Typecheck our code (vendor/ diagnostics are upstream's, and are counted, not reported).
 check:
     npm run typecheck
